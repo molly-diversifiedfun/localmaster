@@ -35,6 +35,33 @@ class ExportResult:
     checklist: dict[str, bool]
 
 
+def apply_trim_and_fades(
+    samples: np.ndarray,
+    sample_rate: int,
+    *,
+    trim_silence: bool = False,
+    fade_in_ms: float = 0.0,
+    fade_out_ms: float = 0.0,
+) -> np.ndarray:
+    """Optional DJ-prep edits, all OFF by default. Returns a new array."""
+    from localmaster_engine.analysis import silence_bounds_seconds
+
+    out = samples
+    if trim_silence:
+        lead, trail = silence_bounds_seconds(out, sample_rate)
+        start = int(lead * sample_rate)
+        stop = out.shape[0] - int(trail * sample_rate)
+        out = out[start:stop] if stop > start else out
+    out = out.copy()
+    fade_in = min(int(fade_in_ms / 1000 * sample_rate), out.shape[0])
+    fade_out = min(int(fade_out_ms / 1000 * sample_rate), out.shape[0])
+    if fade_in > 0:
+        out[:fade_in] *= np.linspace(0.0, 1.0, fade_in)[:, None]
+    if fade_out > 0:
+        out[-fade_out:] *= np.linspace(1.0, 0.0, fade_out)[:, None]
+    return out
+
+
 def build_filename(original_stem: str, preset_id: str, lufs: float, sample_rate: int, bits: int) -> str:
     return (
         f"{original_stem}__LocalMaster__{preset_id}__{lufs:.1f}LUFS__"
@@ -83,6 +110,9 @@ def export_master(
     bit_depth: int | None = None,
     stage_meta: list[dict] | None = None,
     processing_seconds: float | None = None,
+    trim_silence: bool = False,
+    fade_in_ms: float = 0.0,
+    fade_out_ms: float = 0.0,
 ) -> ExportResult:
     started = time.monotonic()
     bits = bit_depth or preset.bit_depth
@@ -94,6 +124,11 @@ def export_master(
     except OSError as exc:
         raise ExportError(f"Cannot create output directory {out_root}: {exc}") from exc
 
+    final_samples = apply_trim_and_fades(
+        result.samples, result.sample_rate,
+        trim_silence=trim_silence, fade_in_ms=fade_in_ms, fade_out_ms=fade_out_ms,
+    )
+    result = MasterResult(final_samples, result.sample_rate, result.stage_meta, result.warnings)
     output_analysis = analyze(result.samples, result.sample_rate)
     achieved = output_analysis.integrated_lufs
     name = build_filename(Path(original_path).stem, preset.id, achieved, result.sample_rate, bits)

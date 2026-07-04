@@ -44,6 +44,8 @@ class AnalysisReport:
     has_harshness: bool
     stereo_imbalance_db: float
     has_stereo_imbalance: bool
+    leading_silence_seconds: float
+    trailing_silence_seconds: float
     waveform_overview: list[list[float]]
 
     def to_dict(self) -> dict:
@@ -128,6 +130,29 @@ def stereo_imbalance_db(samples: np.ndarray) -> float:
     return round(float(20 * np.log10(rms[0] / rms[1])), 2)
 
 
+SILENCE_THRESHOLD_DBFS = -60.0
+SILENCE_BLOCK_SECONDS = 0.01
+
+
+def silence_bounds_seconds(samples: np.ndarray, sample_rate: int) -> tuple[float, float]:
+    """(leading, trailing) silence duration below -60 dBFS, 10 ms resolution."""
+    block = max(int(sample_rate * SILENCE_BLOCK_SECONDS), 1)
+    n_blocks = int(np.ceil(samples.shape[0] / block))
+    padded = np.zeros((n_blocks * block, samples.shape[1]))
+    padded[: samples.shape[0]] = samples
+    peaks = np.abs(padded).max(axis=1).reshape(n_blocks, block).max(axis=1)
+    loud = peaks >= 10 ** (SILENCE_THRESHOLD_DBFS / 20)
+    if not loud.any():
+        duration = samples.shape[0] / sample_rate
+        return round(duration, 3), round(duration, 3)
+    first, last = int(np.argmax(loud)), int(n_blocks - 1 - np.argmax(loud[::-1]))
+    trailing_blocks = n_blocks - 1 - last
+    return (
+        round(first * block / sample_rate, 3),
+        round(max(trailing_blocks * block - (n_blocks * block - samples.shape[0]), 0) / sample_rate, 3),
+    )
+
+
 def waveform_overview(samples: np.ndarray, bins: int = 1000) -> list[list[float]]:
     """Per-bin [min, max] envelope of the mono mix, for UI rendering."""
     mono = np.mean(samples, axis=1)
@@ -147,6 +172,7 @@ def analyze(samples: np.ndarray, sample_rate: int, bit_depth: int | None = None)
     dc = [round(float(m), 6) for m in np.mean(samples, axis=0)]
     clipped = count_clipped_regions(samples)
     imbalance = stereo_imbalance_db(samples)
+    silence = silence_bounds_seconds(samples, sample_rate)
     return AnalysisReport(
         sample_rate=sample_rate,
         n_channels=samples.shape[1],
@@ -167,5 +193,7 @@ def analyze(samples: np.ndarray, sample_rate: int, bit_depth: int | None = None)
         has_harshness=_band_energy_ratio(samples, sample_rate, *HARSH_BAND) > HARSH_EXCESS_RATIO,
         stereo_imbalance_db=imbalance,
         has_stereo_imbalance=abs(imbalance) > IMBALANCE_FLAG_DB,
+        leading_silence_seconds=silence[0],
+        trailing_silence_seconds=silence[1],
         waveform_overview=waveform_overview(samples),
     )

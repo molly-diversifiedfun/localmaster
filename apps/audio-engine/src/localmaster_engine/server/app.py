@@ -46,6 +46,9 @@ class MasterBody(BaseModel):
 class ExportBody(MasterBody):
     out_dir: str
     bit_depth: int | None = None
+    trim_silence: bool = False
+    fade_in_ms: float = 0.0
+    fade_out_ms: float = 0.0
 
 
 def _http_error(status: int, code: str, message: str) -> HTTPException:
@@ -133,6 +136,8 @@ async def export_endpoint(body: ExportBody) -> dict:
         export = export_master(
             result, input_analysis, preset, body.path, body.out_dir,
             bit_depth=body.bit_depth, processing_seconds=time.monotonic() - started,
+            trim_silence=body.trim_silence,
+            fade_in_ms=body.fade_in_ms, fade_out_ms=body.fade_out_ms,
         )
         return {
             "out_path": export.out_path,
