@@ -29,7 +29,6 @@ def test_batch_partial_failure_names_completed_exports(fixtures_dir, tmp_path, m
     """A LibsndfileError mid-batch must surface as a clean ExportError naming
     the already-exported files (regression: type(exc) re-raise broke on
     non-message constructors)."""
-    import soundfile as sf
 
     from localmaster_engine import batch as batch_mod
     from localmaster_engine.export import ExportError

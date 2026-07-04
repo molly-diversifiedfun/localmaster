@@ -178,3 +178,17 @@ async def test_ipv6_loopback_host_allowed(client):
         for host in ("[::1]", "[::1]:48750", "localhost", "127.0.0.1:48750"):
             resp = await client.get("/health", headers={"host": host})
             assert resp.status_code == 200, host
+
+
+@pytest.mark.asyncio
+async def test_chunked_body_without_content_length_rejected(client):
+    """Transfer-Encoding without Content-Length must not bypass the JSON guard."""
+    async with client:
+        resp = await client.post(
+            "/analyze",
+            content=b'{"path": "/tmp/x.wav"}',
+            headers={"content-type": "text/plain", "transfer-encoding": "chunked",
+                     "content-length": "0"},
+        )
+        assert resp.status_code == 415
+        assert resp.json()["error"]["code"] == "json_required"
