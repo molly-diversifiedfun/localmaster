@@ -1,0 +1,32 @@
+[project]
+name = "localmaster-engine"
+version = "0.1.0"
+description = "LocalMaster audio engine — deterministic, analysis-driven local mastering DSP"
+requires-python = ">=3.12,<3.13"
+license = "MIT"
+dependencies = [
+    "numpy>=2.2",
+    "scipy>=1.15",
+    "soundfile>=0.13",
+    "pyloudnorm>=0.1.1",
+    "fastapi>=0.115",
+    "uvicorn>=0.34",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "httpx>=0.28",
+    "pyinstaller>=6.21",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/localmaster_engine"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
