@@ -160,8 +160,13 @@ def export_master(
     out_path = _claim_unique_path(out_root / name)
     try:
         _write_wav(out_path, result.samples, result.sample_rate, bits, preset)
-    except (OSError, sf.LibsndfileError) as exc:
-        raise ExportError(f"Failed writing {out_path.name}: {exc}") from exc
+    except Exception as exc:
+        # The name was claimed (O_EXCL) before writing — remove the empty
+        # placeholder so a retry doesn't roll to __2 for no reason.
+        out_path.unlink(missing_ok=True)
+        if isinstance(exc, (OSError, sf.LibsndfileError)):
+            raise ExportError(f"Failed writing {out_path.name}: {exc}") from exc
+        raise
 
     checklist = _checklist(output_analysis, preset, achieved, out_path)
     report = reports.build_report(

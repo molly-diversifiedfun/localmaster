@@ -11,7 +11,7 @@ from pathlib import Path
 
 from localmaster_engine.analysis import analyze
 from localmaster_engine.audio_io import load_audio
-from localmaster_engine.export import ExportResult, export_master
+from localmaster_engine.export import ExportError, ExportResult, export_master
 from localmaster_engine.pipeline import master
 from localmaster_engine.presets import Preset
 
@@ -65,8 +65,10 @@ def master_album(
         except Exception as exc:
             # Don't strand already-exported tracks as undocumented files on
             # disk: name them in the error so the caller knows what landed.
+            # Always wrap as ExportError — re-raising type(exc) breaks on
+            # classes with non-message constructors (e.g. LibsndfileError).
             done = ", ".join(Path(e.out_path).name for e in exports) or "none"
-            raise type(exc)(
+            raise ExportError(
                 f"{Path(path).name} failed ({exc}). Already exported before the failure: {done}."
             ) from exc
     report(total_steps, "done")

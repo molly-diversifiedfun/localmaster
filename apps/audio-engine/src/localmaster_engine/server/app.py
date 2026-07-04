@@ -41,6 +41,8 @@ ALLOWED_HOSTS = {"127.0.0.1", "localhost", "[::1]", "::1"}
 def _host_of(header: str) -> str:
     if header.startswith("["):  # [::1] or [::1]:port
         return header.split("]", 1)[0] + "]"
+    if header.count(":") > 1:  # bare IPv6 literal — nothing to strip
+        return header
     return header.rsplit(":", 1)[0] if ":" in header else header
 
 
@@ -53,7 +55,11 @@ async def browser_attack_guard(request, call_next):  # noqa: ANN001
 
     if _host_of(request.headers.get("host", "")) not in ALLOWED_HOSTS:
         return refuse(403, "forbidden_host", "Loopback only.")
-    if request.method == "POST" and request.headers.get("content-length", "0") != "0":
+    has_body = (
+        request.headers.get("content-length", "0") != "0"
+        or "transfer-encoding" in request.headers
+    )
+    if request.method == "POST" and has_body:
         content_type = request.headers.get("content-type", "").split(";")[0].strip()
         if content_type != "application/json":
             return refuse(415, "json_required", "Content-Type must be application/json.")
