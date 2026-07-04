@@ -150,6 +150,41 @@ async def export_endpoint(body: ExportBody) -> dict:
     return {"job_id": store.submit(work)}
 
 
+class BatchBody(BaseModel):
+    paths: list[str]
+    preset_id: str
+    overrides: dict | None = None
+    out_dir: str
+    bit_depth: int | None = None
+
+
+@app.post("/batch", status_code=202)
+async def batch_endpoint(body: BatchBody) -> dict:
+    from localmaster_engine.batch import master_album
+
+    def work(progress) -> dict:
+        preset = _resolve_preset(body.preset_id, body.overrides)
+        result = master_album(
+            body.paths, preset, body.out_dir, bit_depth=body.bit_depth, progress=progress
+        )
+        return {
+            "shared_target_lufs": result.shared_target_lufs,
+            "warnings": result.warnings,
+            "exports": [
+                {
+                    "out_path": e.out_path,
+                    "json_report_path": e.json_report_path,
+                    "txt_report_path": e.txt_report_path,
+                    "checklist": e.checklist,
+                    "output_analysis": e.output_analysis.to_dict(),
+                }
+                for e in result.exports
+            ],
+        }
+
+    return {"job_id": store.submit(work)}
+
+
 @app.get("/jobs/{job_id}")
 def job_status(job_id: str) -> dict:
     job = store.get(job_id)

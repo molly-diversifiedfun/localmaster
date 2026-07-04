@@ -55,6 +55,21 @@ Job result:
  "output_analysis": AnalysisReport}
 ```
 
+### `POST /batch` body:
+```json
+{"paths": string[], "preset_id": string, "overrides": object?,
+ "out_dir": string, "bit_depth": 16|24|32?}
+```
+Two-pass album mastering: pass 1 measures each track's achievable loudness at
+the preset target, pass 2 re-renders ALL tracks to the quietest achieved value
+(`shared_target_lufs`) so the album is loudness-consistent even when the
+transient guard capped one dynamic track.
+→ `202 {"job_id": string}`. Job result:
+```json
+{"shared_target_lufs": number, "warnings": string[],
+ "exports": [<ExportJobResult>, ...]}   // one per input path, same order
+```
+
 ### `GET /jobs/{job_id}`
 → `200 {"status":"queued"|"running"|"done"|"error",
         "progress": number,            // 0..1

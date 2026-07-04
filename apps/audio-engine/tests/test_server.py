@@ -89,3 +89,27 @@ async def test_error_paths(client):
         assert job["status"] == "error"
         assert job["error"]["code"] == "AudioLoadError"
         assert (await client.get("/jobs/doesnotexist")).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_batch_endpoint_shared_target(client, fixtures_dir, tmp_path):
+    async with client:
+        resp = await client.post(
+            "/batch",
+            json={
+                "paths": [
+                    str(fixtures_dir / "album_track4_-16LUFS.wav"),
+                    str(fixtures_dir / "album_track5_-12LUFS.wav"),
+                ],
+                "preset_id": "gentle",
+                "out_dir": str(tmp_path / "album"),
+            },
+        )
+        assert resp.status_code == 202
+        job = await _wait_for_job(client, resp.json()["job_id"], timeout_s=300)
+        assert job["status"] == "done", job["error"]
+        result = job["result"]
+        assert len(result["exports"]) == 2
+        lufs = [e["output_analysis"]["integrated_lufs"] for e in result["exports"]]
+        assert abs(lufs[0] - lufs[1]) <= 1.0
+        assert all(e["checklist"]["export_succeeded"] for e in result["exports"])
