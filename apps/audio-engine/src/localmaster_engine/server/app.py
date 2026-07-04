@@ -14,6 +14,7 @@ from pathlib import Path
 
 import soundfile as sf
 from fastapi import FastAPI, HTTPException
+from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel
 
 from localmaster_engine import __version__
@@ -27,22 +28,35 @@ from localmaster_engine.server.jobs import JobStore
 app = FastAPI(title="LocalMaster engine", version=__version__, docs_url=None, redoc_url=None)
 store = JobStore()
 
-# DNS-rebinding guard: a malicious website can point its own hostname at
-# 127.0.0.1 and script requests to this engine; the browser then sends that
-# hostname in Host. Only genuine loopback Hosts are served.
-ALLOWED_HOSTS = {"127.0.0.1", "localhost", "[::1]"}
+# Browser-attack guards, both required for a loopback engine that writes files:
+# 1. Host allowlist (DNS rebinding: attacker's hostname resolving to 127.0.0.1
+#    arrives with the attacker's Host header).
+# 2. JSON Content-Type required on bodied requests (a cross-origin
+#    <form enctype="text/plain"> POST is CORS-"simple" and would otherwise
+#    reach the handlers; requiring application/json forces a CORS preflight,
+#    which fails closed since we serve no CORS headers).
+ALLOWED_HOSTS = {"127.0.0.1", "localhost", "[::1]", "::1"}
+
+
+def _host_of(header: str) -> str:
+    if header.startswith("["):  # [::1] or [::1]:port
+        return header.split("]", 1)[0] + "]"
+    return header.rsplit(":", 1)[0] if ":" in header else header
 
 
 @app.middleware("http")
-async def host_guard(request, call_next):  # noqa: ANN001
+async def browser_attack_guard(request, call_next):  # noqa: ANN001
     from fastapi.responses import JSONResponse
 
-    host = request.headers.get("host", "").rsplit(":", 1)[0]
-    if host not in ALLOWED_HOSTS:
-        return JSONResponse(
-            status_code=403,
-            content={"error": {"code": "forbidden_host", "message": "Loopback only."}},
-        )
+    def refuse(status: int, code: str, message: str):
+        return JSONResponse(status_code=status, content={"error": {"code": code, "message": message}})
+
+    if _host_of(request.headers.get("host", "")) not in ALLOWED_HOSTS:
+        return refuse(403, "forbidden_host", "Loopback only.")
+    if request.method == "POST" and request.headers.get("content-length", "0") != "0":
+        content_type = request.headers.get("content-type", "").split(";")[0].strip()
+        if content_type != "application/json":
+            return refuse(415, "json_required", "Content-Type must be application/json.")
     return await call_next(request)
 
 PREVIEW_DIR = Path(
@@ -226,6 +240,20 @@ def domain_error_handler(_, exc):  # noqa: ANN001
     from fastapi.responses import JSONResponse
 
     return JSONResponse(status_code=422, content={"error": {"code": type(exc).__name__, "message": str(exc)}})
+
+
+@app.exception_handler(RequestValidationError)
+def validation_error_handler(_, exc: RequestValidationError):  # noqa: ANN001
+    """Malformed bodies must also use the contract shape, not FastAPI's
+    {"detail": [...]} list."""
+    from fastapi.responses import JSONResponse
+
+    first = exc.errors()[0] if exc.errors() else {}
+    loc = ".".join(str(p) for p in first.get("loc", []) if p != "body")
+    message = f"{loc}: {first.get('msg', 'invalid request body')}" if loc else "Invalid request body."
+    return JSONResponse(
+        status_code=422, content={"error": {"code": "invalid_request", "message": message}}
+    )
 
 
 @app.exception_handler(HTTPException)

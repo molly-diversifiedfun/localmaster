@@ -93,3 +93,16 @@ def test_export_never_overwrites(fixtures_dir, tmp_path):
     assert Path(first.out_path).exists() and Path(second.out_path).exists()
     assert "__2.wav" in second.out_path
     assert Path(first.json_report_path) != Path(second.json_report_path)
+
+
+def test_unique_path_claim_is_atomic_under_threads(fixtures_dir, tmp_path):
+    """Concurrent exports to the same name must never collide (O_EXCL claim)."""
+    import concurrent.futures
+
+    from localmaster_engine.export import _claim_unique_path
+
+    target = tmp_path / "same_name.wav"
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+        claimed = list(pool.map(lambda _: _claim_unique_path(target), range(8)))
+    assert len({str(p) for p in claimed}) == 8  # all distinct
+    assert all(p.exists() for p in claimed)  # every name actually reserved

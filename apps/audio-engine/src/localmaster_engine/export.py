@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -69,15 +70,21 @@ def build_filename(original_stem: str, preset_id: str, lufs: float, sample_rate:
     )
 
 
-def _unique_path(path: Path) -> Path:
-    """Never overwrite: on collision, append __2, __3, … before the suffix.
-    Sidecars derive from the returned path, so they stay collision-free too."""
-    if not path.exists():
-        return path
-    for n in range(2, 1000):
-        candidate = path.with_name(f"{path.stem}__{n}{path.suffix}")
-        if not candidate.exists():
+def _claim_unique_path(path: Path) -> Path:
+    """Never overwrite: atomically claim the name (O_CREAT|O_EXCL — no
+    check-then-act race between concurrent export jobs); on collision append
+    __2, __3, … Sidecars derive from the returned path, so they stay
+    collision-free too."""
+    candidates = (
+        path if n == 1 else path.with_name(f"{path.stem}__{n}{path.suffix}")
+        for n in range(1, 1000)
+    )
+    for candidate in candidates:
+        try:
+            os.close(os.open(candidate, os.O_CREAT | os.O_EXCL | os.O_WRONLY))
             return candidate
+        except FileExistsError:
+            continue
     raise ExportError(f"Could not find a free filename near {path.name}")
 
 
@@ -150,7 +157,7 @@ def export_master(
     output_analysis = analyze(result.samples, result.sample_rate)
     achieved = output_analysis.integrated_lufs
     name = build_filename(Path(original_path).stem, preset.id, achieved, result.sample_rate, bits)
-    out_path = _unique_path(out_root / name)
+    out_path = _claim_unique_path(out_root / name)
     try:
         _write_wav(out_path, result.samples, result.sample_rate, bits, preset)
     except (OSError, sf.LibsndfileError) as exc:

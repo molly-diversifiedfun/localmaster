@@ -54,13 +54,21 @@ def master_album(
     exports, warnings = [], []
     for i, path in enumerate(paths):
         report(len(paths) + i, f"pass2:{Path(path).name}")
-        loaded = load_audio(path)
-        input_analysis = analyze(loaded.samples, loaded.sample_rate, loaded.bit_depth)
-        result = master(loaded.samples, loaded.sample_rate, album_preset)
-        exports.append(
-            export_master(result, input_analysis, album_preset, path, out_dir, bit_depth=bit_depth)
-        )
-        warnings.extend(f"{path}: {w}" for w in result.warnings)
+        try:
+            loaded = load_audio(path)
+            input_analysis = analyze(loaded.samples, loaded.sample_rate, loaded.bit_depth)
+            result = master(loaded.samples, loaded.sample_rate, album_preset)
+            exports.append(
+                export_master(result, input_analysis, album_preset, path, out_dir, bit_depth=bit_depth)
+            )
+            warnings.extend(f"{path}: {w}" for w in result.warnings)
+        except Exception as exc:
+            # Don't strand already-exported tracks as undocumented files on
+            # disk: name them in the error so the caller knows what landed.
+            done = ", ".join(Path(e.out_path).name for e in exports) or "none"
+            raise type(exc)(
+                f"{Path(path).name} failed ({exc}). Already exported before the failure: {done}."
+            ) from exc
     report(total_steps, "done")
     return BatchResult(
         shared_target_lufs=round(shared_target, 2), exports=exports, warnings=warnings

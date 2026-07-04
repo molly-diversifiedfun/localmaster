@@ -53,8 +53,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       .catch(() => null)) as ApiErrorBody | null;
     throw new ApiError(
       response.status,
-      body?.error.code ?? "UNKNOWN_ERROR",
-      body?.error.message ?? `Engine request failed (${response.status}).`,
+      body?.error?.code ?? "UNKNOWN_ERROR",
+      body?.error?.message ?? `Engine request failed (${response.status}).`,
     );
   }
   return response.json() as Promise<T>;

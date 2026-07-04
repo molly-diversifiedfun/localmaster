@@ -147,3 +147,34 @@ async def test_error_body_shape_matches_contract(client):
         body = resp.json()
         assert "error" in body and "detail" not in body
         assert set(body["error"]) == {"code", "message"}
+
+
+@pytest.mark.asyncio
+async def test_malformed_body_is_contract_shaped(client):
+    async with client:
+        resp = await client.post("/batch", json={"paths": []})
+        assert resp.status_code == 422
+        body = resp.json()
+        assert body["error"]["code"] == "invalid_request"
+        assert "detail" not in body
+
+
+@pytest.mark.asyncio
+async def test_non_json_post_body_rejected(client):
+    """text/plain form CSRF vector: bodied POSTs must be application/json."""
+    async with client:
+        resp = await client.post(
+            "/analyze",
+            content=b'{"path": "/tmp/x.wav"}',
+            headers={"content-type": "text/plain"},
+        )
+        assert resp.status_code == 415
+        assert resp.json()["error"]["code"] == "json_required"
+
+
+@pytest.mark.asyncio
+async def test_ipv6_loopback_host_allowed(client):
+    async with client:
+        for host in ("[::1]", "[::1]:48750", "localhost", "127.0.0.1:48750"):
+            resp = await client.get("/health", headers={"host": host})
+            assert resp.status_code == 200, host

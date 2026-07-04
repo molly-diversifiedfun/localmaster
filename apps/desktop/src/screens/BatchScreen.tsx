@@ -125,8 +125,8 @@ export function BatchScreen() {
           className="flex flex-col gap-1 text-sm text-studio-text-dim"
           data-testid="batch-file-list"
         >
-          {paths.map((path) => (
-            <li key={path}>{basename(path)}</li>
+          {paths.map((path, i) => (
+            <li key={`${path}-${i}`}>{basename(path)}</li>
           ))}
         </ul>
       )}
@@ -177,7 +177,7 @@ export function BatchScreen() {
                   exportResult.checklist,
                 ).filter(([, ok]) => !ok);
                 return (
-                  <tr key={path} className="border-t border-studio-border">
+                  <tr key={`${path}-${i}`} className="border-t border-studio-border">
                     <td className="py-2 pr-4">{basename(path)}</td>
                     <td className="py-2">
                       {failedChecks.length === 0
