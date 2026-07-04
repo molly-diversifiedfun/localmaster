@@ -9,3 +9,4 @@ __pycache__/
 *.spec
 .pytest_cache/
 examples/generated/
+apps/desktop/src-tauri/gen/

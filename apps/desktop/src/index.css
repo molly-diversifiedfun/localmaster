@@ -1,0 +1,22 @@
+@import "tailwindcss";
+
+@theme {
+  --color-studio-bg: #0e0f12;
+  --color-studio-panel: #17191d;
+  --color-studio-panel-raised: #1f2227;
+  --color-studio-border: #2a2d33;
+  --color-studio-text: #e6e7ea;
+  --color-studio-text-dim: #9a9da5;
+  --color-studio-accent: #5ee6c8;
+  --color-studio-warn: #f2b84b;
+  --color-studio-danger: #f26d6d;
+}
+
+body {
+  @apply bg-studio-bg text-studio-text antialiased;
+  font-family:
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+}
