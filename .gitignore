@@ -1,0 +1,11 @@
+node_modules/
+target/
+dist/
+build/
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+*.spec
+.pytest_cache/
+examples/generated/
