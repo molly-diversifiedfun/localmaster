@@ -40,7 +40,8 @@ Job result:
 ### `POST /export` body:
 ```json
 {"path": string, "preset_id": string, "overrides": object?,
- "out_dir": string, "bit_depth": 16|24|32?}
+ "out_dir": string, "bit_depth": 16|24|32?,
+ "trim_silence": bool = false, "fade_in_ms": number = 0, "fade_out_ms": number = 0}
 ```
 Re-renders deterministically (bit-identical to the preview) and writes
 `{orig}__LocalMaster__{preset}__{LUFS}LUFS__{sr}Hz__{bits}bit.wav` + sidecars.
@@ -70,6 +71,7 @@ Job result:
  "dc_offset": number[], "has_dc_offset": bool, "clipped_regions": int,
  "has_clipping": bool, "has_excessive_sub_bass": bool, "has_harshness": bool,
  "stereo_imbalance_db": number, "has_stereo_imbalance": bool,
+ "leading_silence_seconds": number, "trailing_silence_seconds": number,
  "waveform_overview": [ [min,max], ... ]}   // 1000 bins for UI rendering
 ```
 
