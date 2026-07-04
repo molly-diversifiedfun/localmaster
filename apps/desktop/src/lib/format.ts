@@ -38,8 +38,10 @@ export function formatBitDepth(bitDepth: number): string {
 }
 
 /**
- * Mirrors the engine's export naming scheme for display purposes only —
- * the engine is the source of truth for the actual file it writes.
+ * Mirrors the engine's export naming scheme (signed LUFS to one decimal —
+ * see build_filename in export.py) for display purposes only. The engine is
+ * the source of truth: it uses the ACHIEVED loudness, which can differ from
+ * the target passed here, and it de-duplicates on collision.
  */
 export function previewExportFilename(
   originalFilename: string,
@@ -49,6 +51,5 @@ export function previewExportFilename(
   bitDepth: number,
 ): string {
   const base = stripExtension(basename(originalFilename));
-  const lufsLabel = Math.round(Math.abs(targetLufs));
-  return `${base}__LocalMaster__${presetId}__${lufsLabel}LUFS__${sampleRate}Hz__${bitDepth}bit.wav`;
+  return `${base}__LocalMaster__${presetId}__${targetLufs.toFixed(1)}LUFS__${sampleRate}Hz__${bitDepth}bit.wav`;
 }

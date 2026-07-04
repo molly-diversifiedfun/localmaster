@@ -27,6 +27,24 @@ from localmaster_engine.server.jobs import JobStore
 app = FastAPI(title="LocalMaster engine", version=__version__, docs_url=None, redoc_url=None)
 store = JobStore()
 
+# DNS-rebinding guard: a malicious website can point its own hostname at
+# 127.0.0.1 and script requests to this engine; the browser then sends that
+# hostname in Host. Only genuine loopback Hosts are served.
+ALLOWED_HOSTS = {"127.0.0.1", "localhost", "[::1]"}
+
+
+@app.middleware("http")
+async def host_guard(request, call_next):  # noqa: ANN001
+    from fastapi.responses import JSONResponse
+
+    host = request.headers.get("host", "").rsplit(":", 1)[0]
+    if host not in ALLOWED_HOSTS:
+        return JSONResponse(
+            status_code=403,
+            content={"error": {"code": "forbidden_host", "message": "Loopback only."}},
+        )
+    return await call_next(request)
+
 PREVIEW_DIR = Path(
     os.environ.get("LOCALMASTER_PREVIEW_DIR")
     or Path.home() / "Library" / "Caches" / "LocalMaster" / "previews"
@@ -56,11 +74,16 @@ def _http_error(status: int, code: str, message: str) -> HTTPException:
 
 
 def _resolve_preset(preset_id: str, overrides: dict | None):
+    """MUST be called from the HTTP handler (not the job worker) so that
+    unknown_preset / invalid_overrides surface as real 4xx responses."""
     try:
         preset = get_preset(preset_id)
     except KeyError as exc:
         raise _http_error(404, "unknown_preset", str(exc)) from exc
-    return preset.with_overrides(overrides or {})
+    try:
+        return preset.with_overrides(overrides or {})
+    except (TypeError, ValueError) as exc:
+        raise _http_error(422, "invalid_overrides", str(exc)) from exc
 
 
 @app.get("/health")
@@ -90,9 +113,8 @@ async def analyze_endpoint(body: AnalyzeBody) -> dict:
     return {"job_id": store.submit(work)}
 
 
-def _run_master(body: MasterBody, progress) -> tuple:
+def _run_master(body: MasterBody, preset, progress) -> tuple:
     loaded = load_audio(body.path)
-    preset = _resolve_preset(body.preset_id, body.overrides)
     input_analysis = analyze(loaded.samples, loaded.sample_rate, loaded.bit_depth)
     scaled = lambda stage, frac: progress(stage, 0.2 + frac * 0.7)  # noqa: E731
     result = master(loaded.samples, loaded.sample_rate, preset, progress=scaled)
@@ -101,9 +123,11 @@ def _run_master(body: MasterBody, progress) -> tuple:
 
 @app.post("/master", status_code=202)
 async def master_endpoint(body: MasterBody) -> dict:
+    resolved = _resolve_preset(body.preset_id, body.overrides)
+
     def work(progress) -> dict:
         progress("loading", 0.05)
-        _, preset, input_analysis, result = _run_master(body, progress)
+        _, preset, input_analysis, result = _run_master(body, resolved, progress)
         progress("writing_preview", 0.92)
         PREVIEW_DIR.mkdir(parents=True, exist_ok=True)
         fd, preview_path = tempfile.mkstemp(
@@ -128,10 +152,12 @@ async def master_endpoint(body: MasterBody) -> dict:
 
 @app.post("/export", status_code=202)
 async def export_endpoint(body: ExportBody) -> dict:
+    resolved = _resolve_preset(body.preset_id, body.overrides)
+
     def work(progress) -> dict:
         started = time.monotonic()
         progress("loading", 0.05)
-        _, preset, input_analysis, result = _run_master(body, progress)
+        _, preset, input_analysis, result = _run_master(body, resolved, progress)
         progress("exporting", 0.95)
         export = export_master(
             result, input_analysis, preset, body.path, body.out_dir,
@@ -162,8 +188,9 @@ class BatchBody(BaseModel):
 async def batch_endpoint(body: BatchBody) -> dict:
     from localmaster_engine.batch import master_album
 
+    preset = _resolve_preset(body.preset_id, body.overrides)
+
     def work(progress) -> dict:
-        preset = _resolve_preset(body.preset_id, body.overrides)
         result = master_album(
             body.paths, preset, body.out_dir, bit_depth=body.bit_depth, progress=progress
         )
@@ -201,11 +228,47 @@ def domain_error_handler(_, exc):  # noqa: ANN001
     return JSONResponse(status_code=422, content={"error": {"code": type(exc).__name__, "message": str(exc)}})
 
 
+@app.exception_handler(HTTPException)
+def http_error_handler(_, exc: HTTPException):  # noqa: ANN001
+    """Contract shape is {"error": {code, message}} — not FastAPI's {"detail"}."""
+    from fastapi.responses import JSONResponse
+
+    detail = (
+        exc.detail
+        if isinstance(exc.detail, dict) and {"code", "message"} <= set(exc.detail)
+        else {"code": "http_error", "message": str(exc.detail)}
+    )
+    return JSONResponse(status_code=exc.status_code, content={"error": detail})
+
+
+def sweep_preview_cache(max_age_days: float = 7.0) -> int:
+    """Delete preview WAVs older than max_age_days. Returns count removed."""
+    if not PREVIEW_DIR.exists():
+        return 0
+    cutoff = time.time() - max_age_days * 86400
+    removed = 0
+    for f in PREVIEW_DIR.glob("*.wav"):
+        try:
+            if f.stat().st_mtime < cutoff:
+                f.unlink()
+                removed += 1
+        except OSError:
+            continue
+    return removed
+
+
 def main() -> None:
+    import argparse
+
     import uvicorn
 
-    port = int(os.environ.get("LOCALMASTER_PORT", "48750"))
-    uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning")
+    sweep_preview_cache()
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--port", type=int, default=int(os.environ.get("LOCALMASTER_PORT", "48750"))
+    )
+    args = parser.parse_args()
+    uvicorn.run(app, host="127.0.0.1", port=args.port, log_level="warning")
 
 
 if __name__ == "__main__":

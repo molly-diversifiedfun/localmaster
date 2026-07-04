@@ -85,7 +85,7 @@ describe("previewExportFilename", () => {
       24,
     );
     expect(name).toBe(
-      "my_song__LocalMaster__clean_dj__9LUFS__44100Hz__24bit.wav",
+      "my_song__LocalMaster__clean_dj__-9.0LUFS__44100Hz__24bit.wav",
     );
   });
 
@@ -98,7 +98,7 @@ describe("previewExportFilename", () => {
       16,
     );
     expect(name).toBe(
-      "my_song__LocalMaster__loud_club__7LUFS__48000Hz__16bit.wav",
+      "my_song__LocalMaster__loud_club__-7.0LUFS__48000Hz__16bit.wav",
     );
   });
 });

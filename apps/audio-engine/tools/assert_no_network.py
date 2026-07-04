@@ -3,8 +3,14 @@
 Installs a Python audit hook that aborts the process on ANY socket connect
 that isn't loopback, then runs the full pipeline on synthetic audio.
 
+Scope, honestly stated: sys.addaudithook observes Python-level socket use.
+Native code that opened sockets without going through CPython would not be
+seen — but the dependency set (numpy/scipy/soundfile/pyloudnorm) contains no
+network I/O, and this script's guarantee is over the Python layer that could
+plausibly phone home. Only the direct-pipeline path is exercised.
+
 Usage: uv run python tools/assert_no_network.py
-Exit 0 = proven clean. Non-zero = a connection was attempted (details printed).
+Exit 0 = clean at the audited layer. Non-zero = a connection was attempted.
 """
 from __future__ import annotations
 

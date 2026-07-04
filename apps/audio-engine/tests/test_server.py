@@ -12,7 +12,9 @@ from localmaster_engine.server import app as server_app
 def client(tmp_path, monkeypatch):
     monkeypatch.setattr(server_app, "PREVIEW_DIR", tmp_path / "previews")
     transport = httpx.ASGITransport(app=server_app.app)
-    return httpx.AsyncClient(transport=transport, base_url="http://test")
+    # base_url sets the Host header; the server's DNS-rebinding guard only
+    # serves loopback Hosts, mirroring real deployment.
+    return httpx.AsyncClient(transport=transport, base_url="http://127.0.0.1")
 
 
 async def _wait_for_job(client: httpx.AsyncClient, job_id: str, timeout_s: float = 120) -> dict:
@@ -113,3 +115,35 @@ async def test_batch_endpoint_shared_target(client, fixtures_dir, tmp_path):
         lufs = [e["output_analysis"]["integrated_lufs"] for e in result["exports"]]
         assert abs(lufs[0] - lufs[1]) <= 1.0
         assert all(e["checklist"]["export_succeeded"] for e in result["exports"])
+
+
+@pytest.mark.asyncio
+async def test_unknown_preset_is_immediate_404(client, fixtures_dir):
+    async with client:
+        resp = await client.post(
+            "/master",
+            json={"path": str(fixtures_dir / "sine_1khz_-20dBFS.wav"), "preset_id": "nope"},
+        )
+        assert resp.status_code == 404
+        body = resp.json()
+        assert body["error"]["code"] == "unknown_preset"
+
+
+@pytest.mark.asyncio
+async def test_host_guard_blocks_dns_rebinding(client):
+    async with client:
+        resp = await client.get("/health", headers={"host": "evil.example.com"})
+        assert resp.status_code == 403
+        assert resp.json()["error"]["code"] == "forbidden_host"
+        ok = await client.get("/health", headers={"host": "127.0.0.1:48750"})
+        assert ok.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_error_body_shape_matches_contract(client):
+    async with client:
+        resp = await client.get("/jobs/doesnotexist")
+        assert resp.status_code == 404
+        body = resp.json()
+        assert "error" in body and "detail" not in body
+        assert set(body["error"]) == {"code", "message"}

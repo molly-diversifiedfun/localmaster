@@ -87,6 +87,15 @@ contract) · `docs/` (AUDIO_ENGINE, DJ_EXPORT_GUIDE, plans, ADRs).
 - **MP3 encode disabled** → install ffmpeg yourself (`brew install ffmpeg`);
   LocalMaster never bundles it (license posture, see THIRD_PARTY_NOTICES.md).
 
+## Known limitations (accepted for MVP)
+
+- Quitting the app mid-export SIGTERMs the engine, which can leave a partial
+  output file (never the input — that's read-only by construction). Graceful
+  drain-then-quit is on the roadmap.
+- Engine job errors include absolute local file paths. Deliberate: this is a
+  local-only desktop tool and the paths are the user's own; nothing leaves
+  the machine.
+
 ## Roadmap (post-MVP)
 
 Reference-track matching with a 0–100% strength slider · dynamic low-mid ·

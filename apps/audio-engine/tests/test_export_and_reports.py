@@ -83,3 +83,13 @@ def test_report_sidecars_written_and_honest(fixtures_dir, tmp_path):
 def test_filename_scheme():
     name = build_filename("mysong", "clean_dj", -9.13, 44100, 24)
     assert name == "mysong__LocalMaster__clean_dj__-9.1LUFS__44100Hz__24bit.wav"
+
+
+def test_export_never_overwrites(fixtures_dir, tmp_path):
+    """Re-exporting the same track must create a __2 sibling, not clobber."""
+    first = _run_full(fixtures_dir, tmp_path, name="sine_1khz_-20dBFS.wav", preset_id="gentle")
+    second = _run_full(fixtures_dir, tmp_path, name="sine_1khz_-20dBFS.wav", preset_id="gentle")
+    assert first.out_path != second.out_path
+    assert Path(first.out_path).exists() and Path(second.out_path).exists()
+    assert "__2.wav" in second.out_path
+    assert Path(first.json_report_path) != Path(second.json_report_path)

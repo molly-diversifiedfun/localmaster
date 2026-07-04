@@ -38,6 +38,8 @@ const analysisFixture: AnalysisReport = {
   has_harshness: true,
   stereo_imbalance_db: 0.1,
   has_stereo_imbalance: false,
+  leading_silence_seconds: 0,
+  trailing_silence_seconds: 0,
   waveform_overview: [[-0.5, 0.5]],
 };
 

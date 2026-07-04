@@ -6,6 +6,8 @@ import type {
   AnalysisReport,
   AnalyzeJobAccepted,
   ApiErrorBody,
+  BatchJobResult,
+  BatchRequest,
   ExportJobResult,
   ExportRequest,
   HealthResponse,
@@ -86,6 +88,13 @@ export function master(req: MasterRequest): Promise<AnalyzeJobAccepted> {
 
 export function exportMaster(req: ExportRequest): Promise<AnalyzeJobAccepted> {
   return request<AnalyzeJobAccepted>("/export", {
+    method: "POST",
+    body: JSON.stringify(req),
+  });
+}
+
+export function batch(req: BatchRequest): Promise<AnalyzeJobAccepted> {
+  return request<AnalyzeJobAccepted>("/batch", {
     method: "POST",
     body: JSON.stringify(req),
   });
@@ -174,4 +183,12 @@ export async function exportAndWait(
 ): Promise<ExportJobResult> {
   const { job_id } = await exportMaster(req);
   return pollJob<ExportJobResult>(job_id, options);
+}
+
+export async function batchAndWait(
+  req: BatchRequest,
+  options?: PollJobOptions,
+): Promise<BatchJobResult> {
+  const { job_id } = await batch(req);
+  return pollJob<BatchJobResult>(job_id, options);
 }

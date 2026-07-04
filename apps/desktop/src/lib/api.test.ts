@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ApiError,
   analyzeAndWait,
+  batchAndWait,
   ENGINE_BASE_URL,
   getHealth,
   getJob,
@@ -166,5 +167,79 @@ describe("pollJob", () => {
       expect.objectContaining({ method: "POST" }),
     );
     expect(report).toEqual({ integrated_lufs: -14 });
+  });
+
+  it("batchAndWait chains POST /batch into job polling, reporting the two-pass stage names", async () => {
+    const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
+    fetchMock.mockResolvedValueOnce(jsonResponse({ job_id: "job-5" }));
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        status: "running",
+        progress: 0.3,
+        stage: "pass1:track1.wav",
+        result: null,
+        error: null,
+      }),
+    );
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        status: "running",
+        progress: 0.7,
+        stage: "pass2:track1.wav",
+        result: null,
+        error: null,
+      }),
+    );
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        status: "done",
+        progress: 1,
+        stage: null,
+        result: {
+          shared_target_lufs: -14.2,
+          warnings: ["track2.wav landed above target (transient guard)"],
+          exports: [
+            {
+              out_path: "/out/track1.wav",
+              json_report_path: "/out/track1.json",
+              txt_report_path: "/out/track1.txt",
+              checklist: {
+                no_clipping: true,
+                peak_within_ceiling: true,
+                loudness_within_tolerance: true,
+                valid_stereo: true,
+                export_succeeded: true,
+                output_is_wav: true,
+              },
+              output_analysis: {},
+            },
+          ],
+        },
+        error: null,
+      }),
+    );
+
+    const stages: (string | null)[] = [];
+    const result = await batchAndWait(
+      {
+        paths: ["/tracks/track1.wav", "/tracks/track2.wav"],
+        preset_id: "clean_dj",
+        out_dir: "/out",
+        bit_depth: 24,
+      },
+      {
+        sleep: async () => undefined,
+        onProgress: (state) => stages.push(state.stage),
+      },
+    );
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      `${ENGINE_BASE_URL}/batch`,
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(stages).toEqual(["pass1:track1.wav", "pass2:track1.wav", null]);
+    expect(result.shared_target_lufs).toBe(-14.2);
+    expect(result.exports).toHaveLength(1);
   });
 });

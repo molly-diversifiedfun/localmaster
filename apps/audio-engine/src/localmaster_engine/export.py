@@ -69,6 +69,18 @@ def build_filename(original_stem: str, preset_id: str, lufs: float, sample_rate:
     )
 
 
+def _unique_path(path: Path) -> Path:
+    """Never overwrite: on collision, append __2, __3, … before the suffix.
+    Sidecars derive from the returned path, so they stay collision-free too."""
+    if not path.exists():
+        return path
+    for n in range(2, 1000):
+        candidate = path.with_name(f"{path.stem}__{n}{path.suffix}")
+        if not candidate.exists():
+            return candidate
+    raise ExportError(f"Could not find a free filename near {path.name}")
+
+
 def _dither_seed(samples: np.ndarray, preset: Preset) -> int:
     digest = hashlib.sha256()
     digest.update(np.ascontiguousarray(samples).tobytes())
@@ -128,11 +140,17 @@ def export_master(
         result.samples, result.sample_rate,
         trim_silence=trim_silence, fade_in_ms=fade_in_ms, fade_out_ms=fade_out_ms,
     )
-    result = MasterResult(final_samples, result.sample_rate, result.stage_meta, result.warnings)
+    warnings = list(result.warnings)
+    if trim_silence or fade_in_ms > 0 or fade_out_ms > 0:
+        warnings.append(
+            "Output stats (incl. LUFS in filename/checklist) are re-measured after "
+            "trim/fades, so they can differ slightly from the render target."
+        )
+    result = MasterResult(final_samples, result.sample_rate, result.stage_meta, warnings)
     output_analysis = analyze(result.samples, result.sample_rate)
     achieved = output_analysis.integrated_lufs
     name = build_filename(Path(original_path).stem, preset.id, achieved, result.sample_rate, bits)
-    out_path = out_root / name
+    out_path = _unique_path(out_root / name)
     try:
         _write_wav(out_path, result.samples, result.sample_rate, bits, preset)
     except (OSError, sf.LibsndfileError) as exc:

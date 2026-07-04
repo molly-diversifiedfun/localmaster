@@ -33,6 +33,8 @@ export interface AnalysisReport {
   has_harshness: boolean;
   stereo_imbalance_db: number;
   has_stereo_imbalance: boolean;
+  leading_silence_seconds: number;
+  trailing_silence_seconds: number;
   waveform_overview: WaveformBin[];
 }
 
@@ -107,6 +109,10 @@ export interface ExportRequest {
   overrides?: PresetOverrides;
   out_dir: string;
   bit_depth?: BitDepth;
+  /** Defaults (per contract): trim_silence=false, fade_in_ms=0, fade_out_ms=0. */
+  trim_silence?: boolean;
+  fade_in_ms?: number;
+  fade_out_ms?: number;
 }
 
 export interface ExportChecklist {
@@ -124,6 +130,26 @@ export interface ExportJobResult {
   txt_report_path: string;
   checklist: ExportChecklist;
   output_analysis: AnalysisReport;
+}
+
+export interface BatchRequest {
+  paths: string[];
+  preset_id: string;
+  overrides?: PresetOverrides;
+  out_dir: string;
+  bit_depth?: BitDepth;
+}
+
+/**
+ * Two-pass album mastering result: pass 1 measures each track's achievable
+ * loudness at the preset target, pass 2 re-renders ALL tracks to the
+ * quietest achieved value (`shared_target_lufs`) for album-wide consistency.
+ * `exports` is one ExportJobResult per input path, in the same order.
+ */
+export interface BatchJobResult {
+  shared_target_lufs: number;
+  warnings: string[];
+  exports: ExportJobResult[];
 }
 
 export type JobStatus = "queued" | "running" | "done" | "error";

@@ -1,30 +1,29 @@
 import { useEffect, useState } from "react";
 import { useAppState } from "../state/app-state";
-import { getPresets, masterAndWait, exportAndWait, ApiError } from "../lib/api";
+import { getPresets, batchAndWait, ApiError } from "../lib/api";
 import { pickWavFiles, pickDirectory } from "../lib/tauri";
 import { PresetSelector } from "../components/PresetSelector";
+import { JobProgress } from "../components/JobProgress";
 import { basename } from "../lib/format";
-import type { BitDepth, ExportChecklist } from "@shared/types";
+import type { BatchJobResult, BitDepth } from "@shared/types";
 
-type TrackStatus = "pending" | "mastering" | "exporting" | "done" | "error";
-
-interface TrackRow {
-  path: string;
-  status: TrackStatus;
-  checklist: ExportChecklist | null;
-  error: string | null;
-}
+type BatchStatus = "idle" | "queued" | "running" | "done" | "error";
 
 const BIT_DEPTHS: BitDepth[] = [16, 24, 32];
 
-/** Batch/Album screen: sequential per-track master+export against a shared preset (no batch API endpoint in v1). */
+/** Batch/Album screen: one POST /batch job (two-pass shared-target loudness) across all selected tracks. */
 export function BatchScreen() {
   const { presets, setPresets, selectedPresetId, setSelectedPresetId } =
     useAppState();
-  const [tracks, setTracks] = useState<TrackRow[]>([]);
+  const [paths, setPaths] = useState<string[]>([]);
   const [outDir, setOutDir] = useState<string | null>(null);
   const [bitDepth, setBitDepth] = useState<BitDepth>(24);
-  const [isRunning, setIsRunning] = useState(false);
+
+  const [status, setStatus] = useState<BatchStatus>("idle");
+  const [progress, setProgress] = useState(0);
+  const [stage, setStage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<BatchJobResult | null>(null);
 
   useEffect(() => {
     if (presets.length > 0) return;
@@ -39,15 +38,10 @@ export function BatchScreen() {
   }, []);
 
   async function handlePickFiles() {
-    const paths = await pickWavFiles();
-    setTracks(
-      paths.map((path) => ({
-        path,
-        status: "pending",
-        checklist: null,
-        error: null,
-      })),
-    );
+    const selected = await pickWavFiles();
+    setPaths(selected);
+    setResult(null);
+    setStatus("idle");
   }
 
   async function handlePickOutDir() {
@@ -55,39 +49,36 @@ export function BatchScreen() {
     if (dir) setOutDir(dir);
   }
 
-  function updateTrack(path: string, patch: Partial<TrackRow>) {
-    setTracks((rows) =>
-      rows.map((row) => (row.path === path ? { ...row, ...patch } : row)),
-    );
-  }
-
   async function handleRunBatch() {
-    if (!selectedPresetId || !outDir || tracks.length === 0) return;
-    setIsRunning(true);
-    for (const track of tracks) {
-      updateTrack(track.path, { status: "mastering", error: null });
-      try {
-        await masterAndWait({ path: track.path, preset_id: selectedPresetId });
-        updateTrack(track.path, { status: "exporting" });
-        const result = await exportAndWait({
-          path: track.path,
+    if (!selectedPresetId || !outDir || paths.length === 0) return;
+    setStatus("queued");
+    setError(null);
+    setResult(null);
+    try {
+      const batchResult = await batchAndWait(
+        {
+          paths,
           preset_id: selectedPresetId,
           out_dir: outDir,
           bit_depth: bitDepth,
-        });
-        updateTrack(track.path, {
-          status: "done",
-          checklist: result.checklist,
-        });
-      } catch (err) {
-        updateTrack(track.path, {
-          status: "error",
-          error: err instanceof ApiError ? err.message : "Failed.",
-        });
-      }
+        },
+        {
+          onProgress: (state) => {
+            setStatus(state.status === "queued" ? "queued" : "running");
+            setProgress(state.progress);
+            setStage(state.stage);
+          },
+        },
+      );
+      setResult(batchResult);
+      setStatus("done");
+    } catch (err) {
+      setStatus("error");
+      setError(err instanceof ApiError ? err.message : "Batch failed.");
     }
-    setIsRunning(false);
   }
+
+  const isRunning = status === "queued" || status === "running";
 
   return (
     <div className="flex max-w-4xl flex-col gap-6">
@@ -129,46 +120,83 @@ export function BatchScreen() {
         />
       </div>
 
-      {tracks.length > 0 && (
-        <table
-          className="w-full text-left text-sm"
-          data-testid="batch-summary-table"
+      {paths.length > 0 && !result && (
+        <ul
+          className="flex flex-col gap-1 text-sm text-studio-text-dim"
+          data-testid="batch-file-list"
         >
-          <thead className="text-studio-text-dim">
-            <tr>
-              <th className="pb-2">Track</th>
-              <th className="pb-2">Status</th>
-              <th className="pb-2">Checklist</th>
-            </tr>
-          </thead>
-          <tbody>
-            {tracks.map((track) => (
-              <tr key={track.path} className="border-t border-studio-border">
-                <td className="py-2 pr-4">{basename(track.path)}</td>
-                <td className="py-2 pr-4">
-                  {track.status === "error"
-                    ? `Error: ${track.error}`
-                    : track.status}
-                </td>
-                <td className="py-2">
-                  {(track.checklist &&
-                    Object.entries(track.checklist)
-                      .filter(([, ok]) => !ok)
-                      .map(([key]) => key)
-                      .join(", ")) ||
-                    (track.checklist ? "All checks passed" : "--")}
-                </td>
+          {paths.map((path) => (
+            <li key={path}>{basename(path)}</li>
+          ))}
+        </ul>
+      )}
+
+      <JobProgress
+        status={status}
+        progress={progress}
+        stage={stage}
+        errorMessage={error}
+      />
+
+      {result && (
+        <div className="flex flex-col gap-3">
+          <p
+            className="text-sm text-studio-accent"
+            data-testid="shared-target-headline"
+          >
+            Album matched to {result.shared_target_lufs.toFixed(1)} LUFS
+          </p>
+
+          {result.warnings.length > 0 && (
+            <ul
+              className="flex flex-col gap-1"
+              data-testid="batch-warnings-list"
+            >
+              {result.warnings.map((warning) => (
+                <li key={warning} className="text-sm text-studio-warn">
+                  {warning}
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <table
+            className="w-full text-left text-sm"
+            data-testid="batch-summary-table"
+          >
+            <thead className="text-studio-text-dim">
+              <tr>
+                <th className="pb-2">Track</th>
+                <th className="pb-2">Checklist</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {result.exports.map((exportResult, i) => {
+                const path = paths[i] ?? exportResult.out_path;
+                const failedChecks = Object.entries(
+                  exportResult.checklist,
+                ).filter(([, ok]) => !ok);
+                return (
+                  <tr key={path} className="border-t border-studio-border">
+                    <td className="py-2 pr-4">{basename(path)}</td>
+                    <td className="py-2">
+                      {failedChecks.length === 0
+                        ? "All checks passed"
+                        : failedChecks.map(([key]) => key).join(", ")}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
 
       <button
         type="button"
         onClick={handleRunBatch}
         disabled={
-          !selectedPresetId || !outDir || tracks.length === 0 || isRunning
+          !selectedPresetId || !outDir || paths.length === 0 || isRunning
         }
         className="w-fit rounded bg-studio-accent px-4 py-2 text-sm font-medium text-studio-bg hover:opacity-90 disabled:opacity-50"
       >

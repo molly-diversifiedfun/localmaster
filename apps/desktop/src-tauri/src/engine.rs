@@ -39,14 +39,18 @@ pub fn spawn_engine(app: &tauri::AppHandle) {
     }
 }
 
-/// POSTs /shutdown with a raw HTTP/1.1 request (no async runtime / HTTP crate
-/// needed for one best-effort request), then kills the child if still alive.
+/// Tears down ONLY an engine this app spawned. When `EngineHandle` is `None`
+/// (dev mode: the user runs uvicorn on the shared port themselves), we must
+/// not POST /shutdown — that would SIGTERM a process another actor owns.
 pub fn shutdown_engine(app: &tauri::AppHandle) {
-    let _ = post_shutdown();
     if let Some(child) = app.state::<EngineHandle>().0.lock().unwrap().take() {
+        let _ = post_shutdown();
         let _ = child.kill();
     }
 }
+
+/// Raw HTTP/1.1 request — no async runtime / HTTP crate needed for one
+/// best-effort loopback call.
 
 fn post_shutdown() -> std::io::Result<()> {
     let mut stream = TcpStream::connect((ENGINE_HOST, ENGINE_PORT))?;
