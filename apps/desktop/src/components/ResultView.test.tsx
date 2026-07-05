@@ -123,8 +123,8 @@ describe("ResultView", () => {
         {
           stage: "reference_match",
           strength: 0.4,
-          mid_band_deltas_db: [1],
-          side_band_deltas_db: [-1],
+          mid_band_deltas_db: { "63hz": 1 },
+          side_band_deltas_db: { "63hz": -1 },
         },
       ],
     });

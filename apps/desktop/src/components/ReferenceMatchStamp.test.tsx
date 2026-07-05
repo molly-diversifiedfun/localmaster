@@ -3,11 +3,39 @@ import { render, screen } from "@testing-library/react";
 import { ReferenceMatchStamp } from "./ReferenceMatchStamp";
 import type { ReferenceMatchStageMeta, StageMeta } from "@shared/types";
 
+// Real /master payload shape (caught by live screenshot verification — the
+// engine reports band deltas as a label->dB record, not an array).
 const referenceMatchMeta: ReferenceMatchStageMeta = {
   stage: "reference_match",
   strength: 0.35,
-  mid_band_deltas_db: [1.2, -0.5],
-  side_band_deltas_db: [-2.1, 0.8],
+  applied: true,
+  n_pieces_loudest: 1,
+  reference_piece_gated_lufs: -19.99,
+  reference_mid_side_ratio_db: -222.28,
+  mid_band_deltas_db: {
+    "32hz": -5.69,
+    "63hz": -13.68,
+    "126hz": -7.67,
+    "251hz": -7.99,
+    "502hz": -1.22,
+    "1004hz": 0.81,
+    "2005hz": 1.56,
+    "4007hz": 1.23,
+    "8007hz": 0.8,
+    "16000hz": -0.5,
+  },
+  side_band_deltas_db: {
+    "32hz": -6.6,
+    "63hz": -6.6,
+    "126hz": -6.6,
+    "251hz": -6.6,
+    "502hz": -6.6,
+    "1004hz": -6.6,
+    "2005hz": -6.6,
+    "4007hz": -6.6,
+    "8007hz": -6.6,
+    "16000hz": -6.6,
+  },
 };
 
 describe("ReferenceMatchStamp", () => {
@@ -17,8 +45,10 @@ describe("ReferenceMatchStamp", () => {
     expect(stamp).toHaveTextContent("35%");
     expect(stamp).toHaveTextContent("Mid");
     expect(stamp).toHaveTextContent("Side");
-    expect(stamp).toHaveTextContent("+1.2 dB");
-    expect(stamp).toHaveTextContent("-2.1 dB");
+    expect(stamp).toHaveTextContent("63hz");
+    expect(stamp).toHaveTextContent("-13.7 dB");
+    expect(stamp).toHaveTextContent("16000hz");
+    expect(stamp).toHaveTextContent("-6.6 dB");
   });
 
   it("renders nothing when no reference_match stage-meta entry exists", () => {
@@ -49,6 +79,26 @@ describe("ReferenceMatchStamp", () => {
     expect(
       screen.queryByTestId("reference-match-stamp"),
     ).not.toBeInTheDocument();
+  });
+
+  it("renders nothing (never throws) when band deltas are arrays instead of the real label->dB record", () => {
+    const arrayShaped: StageMeta = {
+      stage: "reference_match",
+      strength: 0.35,
+      mid_band_deltas_db: [1.2, -0.5],
+      side_band_deltas_db: [-2.1, 0.8],
+    };
+    expect(() =>
+      render(<ReferenceMatchStamp stageMeta={[arrayShaped]} />),
+    ).not.toThrow();
+    expect(
+      screen.queryByTestId("reference-match-stamp"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("tolerates extra engine fields alongside the known ones (applied, reference_piece_gated_lufs, etc.)", () => {
+    render(<ReferenceMatchStamp stageMeta={[referenceMatchMeta]} />);
+    expect(screen.getByTestId("reference-match-stamp")).toBeInTheDocument();
   });
 
   it("renders muted (not brand-green) by default", () => {

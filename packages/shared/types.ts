@@ -101,8 +101,9 @@ export interface StageMeta {
 export interface ReferenceMatchStageMeta extends StageMeta {
   stage: "reference_match";
   strength: number;
-  mid_band_deltas_db: number[];
-  side_band_deltas_db: number[];
+  /** Band label (e.g. "63hz") -> delta dB, in the engine's band order. */
+  mid_band_deltas_db: Record<string, number>;
+  side_band_deltas_db: Record<string, number>;
 }
 
 export interface MasterJobResult {

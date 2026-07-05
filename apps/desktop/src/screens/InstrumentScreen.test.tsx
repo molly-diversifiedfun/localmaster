@@ -364,8 +364,8 @@ describe("InstrumentScreen — reference matching", () => {
         {
           stage: "reference_match",
           strength: 0.5,
-          mid_band_deltas_db: [1.2],
-          side_band_deltas_db: [-0.8],
+          mid_band_deltas_db: { "63hz": 1.2 },
+          side_band_deltas_db: { "63hz": -0.8 },
         },
       ],
     });

@@ -8,6 +8,16 @@ interface ReferenceMatchStampProps {
   fresh?: boolean;
 }
 
+/** The engine reports band deltas as a label->dB record (e.g. `{"63hz": -13.7}`), not an array. */
+function isBandDeltaRecord(value: unknown): value is Record<string, number> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    Object.values(value).every((v) => typeof v === "number")
+  );
+}
+
 /** Validates shape, not just `stage`, so a malformed entry degrades to rendering nothing. */
 function isReferenceMatchStageMeta(
   meta: StageMeta,
@@ -15,13 +25,16 @@ function isReferenceMatchStageMeta(
   return (
     meta.stage === "reference_match" &&
     typeof meta.strength === "number" &&
-    Array.isArray(meta.mid_band_deltas_db) &&
-    Array.isArray(meta.side_band_deltas_db)
+    isBandDeltaRecord(meta.mid_band_deltas_db) &&
+    isBandDeltaRecord(meta.side_band_deltas_db)
   );
 }
 
-function formatBandDeltas(values: number[]): string {
-  return values.map(formatDb).join(" ");
+/** Renders in the record's own key order (the engine's band order), e.g. "63hz -13.7 dB". */
+function formatBandDeltas(bands: Record<string, number>): string {
+  return Object.entries(bands)
+    .map(([label, value]) => `${label} ${formatDb(value)}`)
+    .join(" ");
 }
 
 /**
