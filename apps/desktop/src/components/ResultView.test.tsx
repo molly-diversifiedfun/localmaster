@@ -117,7 +117,7 @@ describe("ResultView", () => {
     expect(screen.getByTestId("result-error")).toHaveTextContent("boom");
   });
 
-  it("renders the reference-match stamp from stage-meta", () => {
+  it("renders the reference-match stamp from stage-meta, brand-green like the Master stamp", () => {
     renderResult({
       stageMeta: [
         {
@@ -131,6 +131,9 @@ describe("ResultView", () => {
     expect(screen.getByTestId("reference-match-stamp")).toHaveTextContent(
       "40%",
     );
+    const stamps = screen.getAllByTestId("matrix-stamp");
+    const referenceStamp = stamps[stamps.length - 1];
+    expect(referenceStamp).toHaveClass("text-brand");
   });
 
   it("renders no reference-match stamp when stage-meta has no such entry", () => {

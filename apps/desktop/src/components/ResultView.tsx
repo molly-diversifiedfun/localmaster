@@ -104,7 +104,7 @@ export function ResultView({
         </div>
       </div>
 
-      <ReferenceMatchStamp stageMeta={stageMeta} />
+      <ReferenceMatchStamp stageMeta={stageMeta} fresh />
 
       {warnings.length > 0 && (
         <ul className="flex flex-col gap-1" data-testid="warnings-list">

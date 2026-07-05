@@ -35,4 +35,33 @@ describe("ReferenceMatchStamp", () => {
       screen.queryByTestId("reference-match-stamp"),
     ).not.toBeInTheDocument();
   });
+
+  it("renders nothing (never throws) for a malformed reference_match entry", () => {
+    const malformed: StageMeta = {
+      stage: "reference_match",
+      strength: "0.35", // wrong type
+      mid_band_deltas_db: null,
+      side_band_deltas_db: undefined,
+    };
+    expect(() =>
+      render(<ReferenceMatchStamp stageMeta={[malformed]} />),
+    ).not.toThrow();
+    expect(
+      screen.queryByTestId("reference-match-stamp"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("renders muted (not brand-green) by default", () => {
+    render(<ReferenceMatchStamp stageMeta={[referenceMatchMeta]} />);
+    expect(screen.getByTestId("matrix-stamp")).toHaveClass(
+      "text-text-secondary",
+    );
+  });
+
+  it("renders brand green when fresh, consistent with the Master stamp", () => {
+    render(<ReferenceMatchStamp stageMeta={[referenceMatchMeta]} fresh />);
+    const stamp = screen.getByTestId("matrix-stamp");
+    expect(stamp).toHaveClass("text-brand");
+    expect(stamp).not.toHaveClass("text-text-secondary");
+  });
 });

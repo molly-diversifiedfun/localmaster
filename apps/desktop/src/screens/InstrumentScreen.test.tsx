@@ -2,10 +2,11 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
-import { AppStateProvider } from "../state/app-state";
+import { AppStateProvider, useAppState } from "../state/app-state";
 import { InstrumentScreen } from "./InstrumentScreen";
 import type {
   AnalysisReport,
+  ExportJobResult,
   MasterJobResult,
   Preset,
   PresetsResponse,
@@ -56,9 +57,10 @@ import {
   getPresets,
   analyzeAndWait,
   masterAndWait,
+  exportAndWait,
   ApiError,
 } from "../lib/api";
-import { pickWavFile, pickWavFiles } from "../lib/tauri";
+import { pickWavFile, pickWavFiles, pickDirectory } from "../lib/tauri";
 
 const presetFixture: Preset = {
   id: "clean_dj",
@@ -83,7 +85,15 @@ const presetFixture: Preset = {
   bit_depth: 24,
   remove_dc: true,
 };
-const presetsResponse: PresetsResponse = { presets: [presetFixture] };
+const punchyPresetFixture: Preset = {
+  ...presetFixture,
+  id: "punchy_club",
+  name: "Punchy Club",
+  description: "High-energy club master.",
+};
+const presetsResponse: PresetsResponse = {
+  presets: [presetFixture, punchyPresetFixture],
+};
 
 const analysisFixture: AnalysisReport = {
   sample_rate: 44100,
@@ -124,10 +134,55 @@ const masterResultFixture: MasterJobResult = {
   ab_gain_db: -1.2,
 };
 
+const exportResultFixture: ExportJobResult = {
+  out_path: "/out/song__LocalMaster__clean_dj__-9.0LUFS__44100Hz__24bit.wav",
+  json_report_path: "/out/song.json",
+  txt_report_path: "/out/song.txt",
+  checklist: {
+    no_clipping: true,
+    peak_within_ceiling: true,
+    loudness_within_tolerance: true,
+    valid_stereo: true,
+    export_succeeded: true,
+    output_is_wav: true,
+  },
+  output_analysis: analysisFixture,
+};
+
 function renderInstrument() {
   return render(
     <MemoryRouter>
       <AppStateProvider>
+        <InstrumentScreen />
+      </AppStateProvider>
+    </MemoryRouter>,
+  );
+}
+
+/**
+ * Seeds `referencePath` directly via shared app-state before InstrumentScreen
+ * mounts its flow — the reference picker only lives in the post-master
+ * AdjustDrawer, so this is the seam for regression-testing that state that
+ * exists before the first master (e.g. a preset pick) leaves it untouched.
+ */
+function ReferenceSeeder({ path }: { path: string }) {
+  const { setReferencePath } = useAppState();
+  return (
+    <button
+      type="button"
+      onClick={() => setReferencePath(path)}
+      data-testid="seed-reference"
+    >
+      Seed reference (test only)
+    </button>
+  );
+}
+
+function renderInstrumentWithSeededReference(path: string) {
+  return render(
+    <MemoryRouter>
+      <AppStateProvider>
+        <ReferenceSeeder path={path} />
         <InstrumentScreen />
       </AppStateProvider>
     </MemoryRouter>,
@@ -241,8 +296,10 @@ describe("InstrumentScreen — reference matching", () => {
     vi.mocked(getPresets).mockReset().mockResolvedValue(presetsResponse);
     vi.mocked(analyzeAndWait).mockReset();
     vi.mocked(masterAndWait).mockReset();
+    vi.mocked(exportAndWait).mockReset();
     vi.mocked(pickWavFiles).mockReset();
     vi.mocked(pickWavFile).mockReset();
+    vi.mocked(pickDirectory).mockReset();
   });
 
   it("sends reference_path and match_strength to masterAndWait after picking a reference and re-mastering", async () => {
@@ -367,6 +424,64 @@ describe("InstrumentScreen — reference matching", () => {
     expect(masterAndWait).toHaveBeenLastCalledWith(
       expect.not.objectContaining({ reference_path: expect.anything() }),
       expect.any(Object),
+    );
+  });
+
+  it("sends reference_path and match_strength to exportAndWait when exporting with a reference set", async () => {
+    await walkToResult();
+    vi.mocked(pickWavFile).mockResolvedValue("/refs/warehouse.wav");
+    vi.mocked(pickDirectory).mockResolvedValue("/out");
+    vi.mocked(exportAndWait).mockResolvedValue(exportResultFixture);
+
+    await userEvent.click(screen.getByText("Adjust"));
+    await userEvent.click(screen.getByText("Match a reference…"));
+    await waitFor(() =>
+      expect(screen.getByTestId("reference-clear")).toBeInTheDocument(),
+    );
+
+    await userEvent.click(screen.getByText("Choose destination…"));
+    await waitFor(() => expect(screen.getByText("/out")).toBeInTheDocument());
+    await userEvent.click(screen.getByText("Export 24-bit WAV"));
+
+    await waitFor(() =>
+      expect(exportAndWait).toHaveBeenCalledWith(
+        expect.objectContaining({
+          reference_path: "/refs/warehouse.wav",
+          match_strength: 0.35,
+        }),
+        expect.any(Object),
+      ),
+    );
+  });
+
+  it("keeps a reference untouched when a different preset is selected before mastering", async () => {
+    vi.mocked(pickWavFiles).mockResolvedValue(["/tracks/song.wav"]);
+    vi.mocked(analyzeAndWait).mockResolvedValue(analysisFixture);
+    vi.mocked(masterAndWait).mockResolvedValue(masterResultFixture);
+
+    renderInstrumentWithSeededReference("/refs/warehouse.wav");
+
+    // Seed the reference AFTER landing on the track stage — selecting a file
+    // itself resets any prior reference (acceptance criterion: new file clears it).
+    await userEvent.click(screen.getByText("Choose file(s)…"));
+    await waitFor(() =>
+      expect(screen.getByTestId("preset-selector")).toBeInTheDocument(),
+    );
+    await userEvent.click(screen.getByTestId("seed-reference"));
+
+    // Selecting a different preset must reset overrides but leave the reference alone.
+    await userEvent.click(screen.getByText("Punchy Club"));
+    await userEvent.click(screen.getByText("Master this track"));
+
+    await waitFor(() =>
+      expect(masterAndWait).toHaveBeenCalledWith(
+        expect.objectContaining({
+          preset_id: "punchy_club",
+          reference_path: "/refs/warehouse.wav",
+          match_strength: 0.35,
+        }),
+        expect.any(Object),
+      ),
     );
   });
 });
