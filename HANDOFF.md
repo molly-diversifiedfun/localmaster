@@ -1,17 +1,11 @@
-# LocalMaster — handoff (2026-07-05, end of build day)
+# LocalMaster — handoff (2026-07-05)
 
-Resume: `make dev` (dev) or `open apps/desktop/src-tauri/target/release/bundle/macos/LocalMaster.app` (packaged). Tests: `make test` (74 engine + 72 desktop). Rebuild app: `make app`.
+Resume: `open apps/desktop/src-tauri/target/release/bundle/macos/LocalMaster.app` (packaged) or `make dev`. Tests: `make test`. Board: `gh issue list` (tasks live in GitHub Issues now — repo is public at github.com/molly-diversifiedfun/localmaster, CI green).
 
-State: MVP + single-flow UI + **packaged .app** + **reference matching (engine+API only, no UI yet)** — all committed through 431b9ba, all reviewed (no CRITICAL/HIGH open). Clean-room audit passed: reviewer diffed our reference.py against Matchering's GPL source — genuinely independent.
+In flight next session, in order: **#1 reference-matching UI → #2 release-ready export → #3 style presets (gated on Molly's listening verdict) → #4 multiband → #5 housekeeping.**
 
-LOCK-IN album mastered → `~/Desktop/Locked In/Masters/` + compare.html (A/B). Molly has NOT yet reported listening verdict on Clean DJ preset — that gates preset tuning.
+Distribution decision (2026-07-05): DistroKid has no public API; release-ready export profile chosen over becoming a distributor — full analysis + sources in `docs/research/2026-07-05-distribution-landscape.md`; revisit aggregator APIs (LabelGrid/limbo) only with a decision brief if LocalMaster becomes a product.
 
-Next (agreed order):
-1. **Reference-matching UI** — "Match a reference…" picker + strength slider in the Adjust drawer; wire reference_path/match_strength through lib/api (contract already updated).
-2. **Release-ready export** — streaming variant (−14 LUFS) + DistroKid-spec checklist + metadata sidecar (DistroKid has NO public API — see docs/research note in session; export-profile approach chosen).
-3. Style presets (DnB/phonk) + heuristic preset recommend (Ozone rules in research doc §2).
-4. Multiband (papers in research doc §3).
+Still owed by Molly: listening verdict on Clean DJ Master (`~/Desktop/Locked In/Masters/` + compare.html).
 
-Open review notes (non-blocking): engine.rs — crashed sidecar child unreaped until quit (add try_wait poll); reference.py FIR Hann half-sample asymmetry (sub-audible).
-
-Key docs: docs/research/2026-07-04-automatic-mastering-landscape.md (clean-room spec §1 — refmatch builders must NEVER read Matchering source) · docs/decisions/001 + 002 · .design/localmaster-desktop.md (UI law) · packages/shared/api-contract.md (frozen v1).
+Standing rules: never "AI mastering" · refmatch changes are spec-only, never read GPL source (ADR 002) · UI/theme changes need rendered-screenshot verification · session narrative in `.claude/handoffs/2026-07-05-localmaster-build-day.md`.
