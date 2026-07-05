@@ -15,6 +15,7 @@ from pathlib import Path
 import soundfile as sf
 from fastapi import FastAPI, HTTPException
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from localmaster_engine import __version__
@@ -36,6 +37,19 @@ store = JobStore()
 #    reach the handlers; requiring application/json forces a CORS preflight,
 #    which fails closed since we serve no CORS headers).
 ALLOWED_HOSTS = {"127.0.0.1", "localhost", "[::1]", "::1"}
+
+# The desktop webview is a CROSS-ORIGIN client of this loopback server (its
+# origin is tauri://localhost in prod, http://localhost:1420 in dev), so the
+# browser blocks its fetches without CORS headers. The allowlist is exactly
+# the app's own origins — never a wildcard: arbitrary websites still get no
+# Access-Control-Allow-Origin, keeping the CSRF posture intact.
+APP_ORIGINS = [
+    "tauri://localhost",       # Tauri prod (macOS/Linux)
+    "http://tauri.localhost",  # Tauri prod (Windows)
+    "https://tauri.localhost",
+    "http://localhost:1420",   # tauri dev / vite
+    "http://127.0.0.1:1420",
+]
 
 
 def _host_of(header: str) -> str:
@@ -273,6 +287,15 @@ def http_error_handler(_, exc: HTTPException):  # noqa: ANN001
         else {"code": "http_error", "message": str(exc.detail)}
     )
     return JSONResponse(status_code=exc.status_code, content={"error": detail})
+
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=APP_ORIGINS,
+    allow_methods=["GET", "POST"],
+    allow_headers=["content-type"],
+    max_age=3600,
+)
 
 
 def sweep_preview_cache(max_age_days: float = 7.0) -> int:

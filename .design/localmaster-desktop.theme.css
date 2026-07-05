@@ -49,18 +49,12 @@
   --font-weight-semibold: 600;
   --font-weight-bold:     700;
 
-  /* 3. Spacing — 4px base */
+  /* 3. Spacing — 4px base.
+     NOTE: no named --spacing-{sm,md,lg,...} aliases. In Tailwind v4 the
+     spacing namespace also feeds the width, max-width and height utilities,
+     so an alias like --spacing-2xl: 3rem silently collapses max-w-2xl to
+     48px app-wide. */
   --spacing: 0.25rem;
-
-  --spacing-xs:  0.5rem;  /*  8px */
-  --spacing-sm:  0.75rem; /* 12px */
-  --spacing-md:  1rem;    /* 16px */
-  --spacing-lg:  1.5rem;  /* 24px */
-  --spacing-xl:  2rem;    /* 32px */
-  --spacing-2xl: 3rem;    /* 48px */
-  --spacing-3xl: 4rem;    /* 64px */
-  --spacing-4xl: 6rem;    /* 96px */
-  --spacing-5xl: 8rem;    /* 128px */
 
   /* 4. Radii — sharp philosophy */
   --radius-none: 0;

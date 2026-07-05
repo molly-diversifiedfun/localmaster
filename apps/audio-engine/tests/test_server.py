@@ -192,3 +192,23 @@ async def test_chunked_body_without_content_length_rejected(client):
         )
         assert resp.status_code == 415
         assert resp.json()["error"]["code"] == "json_required"
+
+
+@pytest.mark.asyncio
+async def test_cors_allows_app_origins_only(client):
+    """The webview's own origins get CORS headers; arbitrary sites get none."""
+    async with client:
+        ours = await client.get("/health", headers={"origin": "tauri://localhost"})
+        assert ours.headers.get("access-control-allow-origin") == "tauri://localhost"
+        dev = await client.options(
+            "/master",
+            headers={
+                "origin": "http://localhost:1420",
+                "access-control-request-method": "POST",
+                "access-control-request-headers": "content-type",
+            },
+        )
+        assert dev.status_code == 200
+        assert dev.headers.get("access-control-allow-origin") == "http://localhost:1420"
+        evil = await client.get("/health", headers={"origin": "https://evil.example.com"})
+        assert "access-control-allow-origin" not in evil.headers
