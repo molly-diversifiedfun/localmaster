@@ -75,6 +75,7 @@ export function ReferenceMatchControl({
             disabled={!referencePath}
             onChange={handleStrengthInput}
             data-testid="reference-strength-slider"
+            className="accent-brand disabled:opacity-50"
           />
           <span className="w-10 text-right font-mono text-text-secondary">
             {percent}%
