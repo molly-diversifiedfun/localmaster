@@ -1,8 +1,0 @@
-#!/bin/sh
-# Placeholder sidecar binary for local dev builds. The real sidecar is the
-# PyInstaller-frozen engine produced by the packaging task (docs/plans
-# 2026-07-04-mvp-vertical-slice.md, task 12) and is dropped in at this path
-# by the packaging script — this stub only exists so `cargo build`/`tauri
-# build` can resolve the externalBin resource path before that exists.
-echo "localmaster-engine placeholder sidecar: build the real engine via 'cd apps/audio-engine && uv run pyinstaller ...' (see task 12)." >&2
-exit 1

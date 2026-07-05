@@ -48,6 +48,21 @@ Windows/Linux: the engine (`apps/audio-engine`) is pure Python/numpy/scipy and
 runs anywhere; the Tauri app builds on both platforms but is untested there —
 see the roadmap.
 
+### Build the app
+
+```bash
+make app        # freezes the engine, bundles it, builds LocalMaster.app
+open apps/desktop/src-tauri/target/release/bundle/macos/LocalMaster.app
+```
+
+One command: freezes the audio engine (PyInstaller onedir), copies it into
+the Tauri resource bundle, then builds a double-clickable `LocalMaster.app`
+with the engine bundled inside — no separate `make engine-dev` needed. The
+build is currently unsigned, so the first launch of a copy that macOS has
+quarantined (e.g. downloaded or moved via AirDrop) needs **right-click → Open**
+instead of a double-click, to bypass Gatekeeper's "unidentified developer"
+block.
+
 ## How to master a Suno WAV
 
 1. In Suno: Download → **WAV** (not MP3) for your track.

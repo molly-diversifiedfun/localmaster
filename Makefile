@@ -2,7 +2,7 @@
 ENGINE=apps/audio-engine
 DESKTOP=apps/desktop
 
-.PHONY: setup dev engine-dev desktop-dev test test-engine test-desktop fixtures sidecar no-network-proof
+.PHONY: setup dev engine-dev desktop-dev test test-engine test-desktop fixtures sidecar app no-network-proof
 
 setup:            ## install all dependencies (uv + npm)
 	cd $(ENGINE) && uv sync
@@ -32,6 +32,14 @@ fixtures:         ## regenerate synthetic test audio
 
 sidecar:          ## freeze engine to dist/localmaster-engine (onedir)
 	cd $(ENGINE) && ./tools/build_sidecar.sh
+
+app: sidecar      ## build the double-clickable macOS .app (needs cargo on PATH)
+	rm -rf $(DESKTOP)/src-tauri/resources/localmaster-engine
+	mkdir -p $(DESKTOP)/src-tauri/resources
+	cp -R $(ENGINE)/dist/localmaster-engine $(DESKTOP)/src-tauri/resources/localmaster-engine
+	cd $(DESKTOP) && npm run tauri build
+	@echo
+	@echo "Built: $(DESKTOP)/src-tauri/target/release/bundle/macos/LocalMaster.app"
 
 no-network-proof: ## prove zero outbound connections during a full run
 	cd $(ENGINE) && uv run python tools/assert_no_network.py
