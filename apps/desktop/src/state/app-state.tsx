@@ -23,9 +23,16 @@ export interface AppState {
   setSelectedPresetId: (id: string | null) => void;
   overrides: PresetOverrides;
   setOverrides: (overrides: PresetOverrides) => void;
+  referencePath: string | null;
+  setReferencePath: (path: string | null) => void;
+  matchStrength: number;
+  setMatchStrength: (strength: number) => void;
   masterResult: MasterJobResult | null;
   setMasterResult: (result: MasterJobResult | null) => void;
 }
+
+/** Contract's conservative default — reference-matching stage strength. */
+export const DEFAULT_MATCH_STRENGTH = 0.35;
 
 const AppStateContext = createContext<AppState | null>(null);
 
@@ -35,6 +42,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [presets, setPresets] = useState<Preset[]>([]);
   const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null);
   const [overrides, setOverrides] = useState<PresetOverrides>({});
+  const [referencePath, setReferencePath] = useState<string | null>(null);
+  const [matchStrength, setMatchStrength] = useState<number>(
+    DEFAULT_MATCH_STRENGTH,
+  );
   const [masterResult, setMasterResult] = useState<MasterJobResult | null>(
     null,
   );
@@ -51,10 +62,23 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       setSelectedPresetId,
       overrides,
       setOverrides,
+      referencePath,
+      setReferencePath,
+      matchStrength,
+      setMatchStrength,
       masterResult,
       setMasterResult,
     }),
-    [currentPath, analysis, presets, selectedPresetId, overrides, masterResult],
+    [
+      currentPath,
+      analysis,
+      presets,
+      selectedPresetId,
+      overrides,
+      referencePath,
+      matchStrength,
+      masterResult,
+    ],
   );
 
   return (

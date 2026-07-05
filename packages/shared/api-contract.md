@@ -46,8 +46,15 @@ Job result:
   "output_analysis": AnalysisReport,
   "stage_meta": object[],          // per-stage params incl. loudness iterations
                                     // and, if reference_path was given, a
-                                    // "reference_match" stage entry (strength,
-                                    // mid_band_deltas_db, side_band_deltas_db)
+                                    // "reference_match" stage entry:
+                                    // {"stage": "reference_match", "strength": number,
+                                    //  "applied": bool, "n_pieces_loudest": int,
+                                    //  "reference_piece_gated_lufs": number,
+                                    //  "reference_mid_side_ratio_db": number,
+                                    //  "mid_band_deltas_db": {<band label e.g. "63hz">: number, ...},
+                                    //  "side_band_deltas_db": {<band label>: number, ...}}
+                                    // mid/side_band_deltas_db are label->dB records keyed
+                                    // by band (NOT arrays) — 10 bands, engine's own order.
   "warnings": string[],
   "ab_gain_db": number             // ADD to master playback gain (≤0) for
 }                                  // volume-matched A/B vs the original

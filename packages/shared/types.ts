@@ -86,11 +86,24 @@ export interface MasterRequest {
   path: string;
   preset_id: string;
   overrides?: PresetOverrides;
+  /** Absolute path to a reference WAV; loaded + analyzed server-side. */
+  reference_path?: string;
+  /** 0..1, conservative default 0.35 (contract). Shapes spectrum + stereo width only. */
+  match_strength?: number;
 }
 
 export interface StageMeta {
   stage: string;
   [key: string]: unknown;
+}
+
+/** The `stage_meta` entry present only when `reference_path` was given to /master. */
+export interface ReferenceMatchStageMeta extends StageMeta {
+  stage: "reference_match";
+  strength: number;
+  /** Band label (e.g. "63hz") -> delta dB, in the engine's band order. */
+  mid_band_deltas_db: Record<string, number>;
+  side_band_deltas_db: Record<string, number>;
 }
 
 export interface MasterJobResult {
@@ -107,6 +120,8 @@ export interface ExportRequest {
   path: string;
   preset_id: string;
   overrides?: PresetOverrides;
+  reference_path?: string;
+  match_strength?: number;
   out_dir: string;
   bit_depth?: BitDepth;
   /** Defaults (per contract): trim_silence=false, fade_in_ms=0, fade_out_ms=0. */
