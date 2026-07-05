@@ -63,7 +63,7 @@ describe("flowReducer", () => {
     state = flowReducer(state, { type: "ANALYSIS_SUCCESS" });
     state = flowReducer(state, { type: "START_MASTER" });
     state = flowReducer(state, {
-      type: "MASTER_ERROR",
+      type: "MASTER_ERROR", hadMasterResult: false,
       message: "Render failed.",
     });
     expect(state.stage).toBe("track");
@@ -95,7 +95,7 @@ describe("flowReducer", () => {
     let state = flowReducer(initialFlowState, { type: "DROP_FILE" });
     state = flowReducer(state, { type: "ANALYSIS_SUCCESS" });
     state = flowReducer(state, { type: "START_MASTER" });
-    state = flowReducer(state, { type: "MASTER_ERROR", message: "boom" });
+    state = flowReducer(state, { type: "MASTER_ERROR", hadMasterResult: false, message: "boom" });
     state = flowReducer(state, { type: "START_MASTER" });
     expect(state.error).toBeNull();
     expect(state.progress).toBe(0);
@@ -140,5 +140,47 @@ describe("getRailStatus", () => {
     expect(getRailStatus("result", "export")).toBe("pending");
     expect(getRailStatus("exporting", "export")).toBe("active");
     expect(getRailStatus("exported", "export")).toBe("done");
+  });
+});
+
+describe("re-master failure", () => {
+  it("returns to result (not track) when a prior master exists, so the working master stays accessible", () => {
+    let state = initialFlowState;
+    state = flowReducer(state, { type: "DROP_FILE" });
+    state = flowReducer(state, { type: "ANALYSIS_SUCCESS" });
+    state = flowReducer(state, { type: "START_MASTER" });
+    state = flowReducer(state, { type: "MASTER_SUCCESS" });
+    state = flowReducer(state, { type: "START_MASTER" }); // re-master via Adjust drawer
+    state = flowReducer(state, {
+      type: "MASTER_ERROR",
+      message: "boom",
+      hadMasterResult: true,
+    });
+    expect(state.stage).toBe("result");
+    expect(state.error).toBe("boom");
+    expect(state.errorSource).toBe("master");
+  });
+
+  it("still returns to track when the FIRST master fails", () => {
+    let state = flowReducer(initialFlowState, { type: "DROP_FILE" });
+    state = flowReducer(state, { type: "ANALYSIS_SUCCESS" });
+    state = flowReducer(state, { type: "START_MASTER" });
+    state = flowReducer(state, {
+      type: "MASTER_ERROR",
+      message: "boom",
+      hadMasterResult: false,
+    });
+    expect(state.stage).toBe("track");
+  });
+
+  it("tags export errors with errorSource so the ExportBar owns them", () => {
+    let state = flowReducer(initialFlowState, { type: "DROP_FILE" });
+    state = flowReducer(state, { type: "ANALYSIS_SUCCESS" });
+    state = flowReducer(state, { type: "START_MASTER" });
+    state = flowReducer(state, { type: "MASTER_SUCCESS" });
+    state = flowReducer(state, { type: "START_EXPORT" });
+    state = flowReducer(state, { type: "EXPORT_ERROR", message: "disk full" });
+    expect(state.stage).toBe("result");
+    expect(state.errorSource).toBe("export");
   });
 });

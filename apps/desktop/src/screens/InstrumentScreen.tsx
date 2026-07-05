@@ -157,6 +157,7 @@ export function InstrumentScreen() {
         },
       );
       setMasterResult(result);
+      setExportResult(null); // the old export's checklist/paths no longer describe this master
       setOverridesDirty(false);
       dispatch({ type: "MASTER_SUCCESS" });
     } catch (err) {
@@ -164,6 +165,7 @@ export function InstrumentScreen() {
         type: "MASTER_ERROR",
         message:
           err instanceof ApiError ? err.message : "Master render failed.",
+        hadMasterResult: masterResult !== null,
       });
     }
   }
@@ -238,7 +240,7 @@ export function InstrumentScreen() {
             isExporting={flow.stage === "exporting"}
             progress={flow.progress}
             stage={flow.jobStageLabel}
-            error={flow.stage !== "result" ? flow.error : null}
+            error={flow.errorSource === "export" ? flow.error : null}
             result={exportResult}
             onReveal={(outPath) => openInDefaultApp(dirname(outPath))}
             onOpenJson={openInDefaultApp}
@@ -310,7 +312,7 @@ export function InstrumentScreen() {
           overridesDirty={overridesDirty}
           onRemaster={handleMaster}
           onNewTrack={handleNewTrack}
-          error={flow.stage === "result" ? flow.error : null}
+          error={flow.errorSource === "master" ? flow.error : null}
         />
       )}
     </AppShell>

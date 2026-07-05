@@ -14,9 +14,12 @@ export type FlowStage =
   | "exporting"
   | "exported";
 
+export type FlowErrorSource = "analysis" | "master" | "export" | null;
+
 export interface FlowState {
   stage: FlowStage;
   error: string | null;
+  errorSource: FlowErrorSource;
   progress: number;
   jobStageLabel: string | null;
 }
@@ -28,7 +31,7 @@ export type FlowAction =
   | { type: "START_MASTER" }
   | { type: "MASTER_PROGRESS"; progress: number; stageLabel: string | null }
   | { type: "MASTER_SUCCESS" }
-  | { type: "MASTER_ERROR"; message: string }
+  | { type: "MASTER_ERROR"; message: string; hadMasterResult: boolean }
   | { type: "START_EXPORT" }
   | { type: "EXPORT_PROGRESS"; progress: number; stageLabel: string | null }
   | { type: "EXPORT_SUCCESS" }
@@ -38,6 +41,7 @@ export type FlowAction =
 export const initialFlowState: FlowState = {
   stage: "drop",
   error: null,
+  errorSource: null,
   progress: 0,
   jobStageLabel: null,
 };
@@ -61,14 +65,20 @@ export function flowReducer(state: FlowState, action: FlowAction): FlowState {
     case "DROP_FILE":
       return { ...initialFlowState, stage: "analyzing" };
     case "ANALYSIS_SUCCESS":
-      return { ...state, stage: "track", error: null };
+      return { ...state, stage: "track", error: null, errorSource: null };
     case "ANALYSIS_ERROR":
-      return { ...state, stage: "drop", error: action.message };
+      return {
+        ...state,
+        stage: "drop",
+        error: action.message,
+        errorSource: "analysis",
+      };
     case "START_MASTER":
       return {
         ...state,
         stage: "mastering",
         error: null,
+        errorSource: null,
         progress: 0,
         jobStageLabel: null,
       };
@@ -79,14 +89,22 @@ export function flowReducer(state: FlowState, action: FlowAction): FlowState {
         jobStageLabel: action.stageLabel,
       };
     case "MASTER_SUCCESS":
-      return { ...state, stage: "result", error: null };
+      return { ...state, stage: "result", error: null, errorSource: null };
     case "MASTER_ERROR":
-      return { ...state, stage: "track", error: action.message };
+      // A failed RE-master must not evict a still-valid earlier result:
+      // fall back to "result" when one exists, "track" only on first failure.
+      return {
+        ...state,
+        stage: action.hadMasterResult ? "result" : "track",
+        error: action.message,
+        errorSource: "master",
+      };
     case "START_EXPORT":
       return {
         ...state,
         stage: "exporting",
         error: null,
+        errorSource: null,
         progress: 0,
         jobStageLabel: null,
       };
@@ -97,9 +115,14 @@ export function flowReducer(state: FlowState, action: FlowAction): FlowState {
         jobStageLabel: action.stageLabel,
       };
     case "EXPORT_SUCCESS":
-      return { ...state, stage: "exported", error: null };
+      return { ...state, stage: "exported", error: null, errorSource: null };
     case "EXPORT_ERROR":
-      return { ...state, stage: "result", error: action.message };
+      return {
+        ...state,
+        stage: "result",
+        error: action.message,
+        errorSource: "export",
+      };
     case "RESET":
       return initialFlowState;
     default:
