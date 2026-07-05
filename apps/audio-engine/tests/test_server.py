@@ -118,6 +118,73 @@ async def test_batch_endpoint_shared_target(client, fixtures_dir, tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_reference_analyze_job_returns_profile(client, fixtures_dir):
+    async with client:
+        resp = await client.post(
+            "/reference-analyze", json={"path": str(fixtures_dir / "pink_-20LUFS.wav")}
+        )
+        assert resp.status_code == 202
+        job = await _wait_for_job(client, resp.json()["job_id"])
+        assert job["status"] == "done", job["error"]
+        profile = job["result"]
+        assert profile["sample_rate"] == 44100
+        assert len(profile["mid_spectrum"]) == len(profile["freqs_hz"])
+        assert profile["n_pieces_loudest"] >= 1
+
+
+@pytest.mark.asyncio
+async def test_master_with_reference_path_returns_matching_stage_meta(client, fixtures_dir):
+    async with client:
+        resp = await client.post(
+            "/master",
+            json={
+                "path": str(fixtures_dir / "songlike_30s.wav"),
+                "preset_id": "clean_dj",
+                "reference_path": str(fixtures_dir / "pink_-20LUFS.wav"),
+                "match_strength": 0.7,
+            },
+        )
+        job = await _wait_for_job(client, resp.json()["job_id"])
+        assert job["status"] == "done", job["error"]
+        stage_meta = job["result"]["stage_meta"]
+        ref_meta = next(m for m in stage_meta if m["stage"] == "reference_match")
+        assert ref_meta["applied"] is True
+        assert ref_meta["strength"] == 0.7
+        assert "mid_band_deltas_db" in ref_meta
+
+
+@pytest.mark.asyncio
+async def test_master_with_bad_reference_path_is_clean_job_error(client, fixtures_dir):
+    async with client:
+        resp = await client.post(
+            "/master",
+            json={
+                "path": str(fixtures_dir / "songlike_30s.wav"),
+                "preset_id": "clean_dj",
+                "reference_path": "/nope/missing_reference.wav",
+            },
+        )
+        job = await _wait_for_job(client, resp.json()["job_id"])
+        assert job["status"] == "error"
+        assert job["error"]["code"] == "AudioLoadError"
+
+
+@pytest.mark.asyncio
+async def test_master_with_out_of_range_match_strength_is_immediate_422(client, fixtures_dir):
+    async with client:
+        resp = await client.post(
+            "/master",
+            json={
+                "path": str(fixtures_dir / "sine_1khz_-20dBFS.wav"),
+                "preset_id": "clean_dj",
+                "match_strength": 1.5,
+            },
+        )
+        assert resp.status_code == 422
+        assert resp.json()["error"]["code"] == "invalid_match_strength"
+
+
+@pytest.mark.asyncio
 async def test_unknown_preset_is_immediate_404(client, fixtures_dir):
     async with client:
         resp = await client.post(

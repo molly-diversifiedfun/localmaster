@@ -21,6 +21,7 @@ from pydantic import BaseModel
 from localmaster_engine import __version__
 from localmaster_engine.analysis import analyze
 from localmaster_engine.audio_io import AudioLoadError, load_audio
+from localmaster_engine.chain.reference import analyze_reference
 from localmaster_engine.export import ExportError, export_master
 from localmaster_engine.pipeline import master
 from localmaster_engine.presets import PRESETS, get_preset
@@ -89,10 +90,16 @@ class AnalyzeBody(BaseModel):
     path: str
 
 
+class ReferenceAnalyzeBody(BaseModel):
+    path: str
+
+
 class MasterBody(BaseModel):
     path: str
     preset_id: str
     overrides: dict | None = None
+    reference_path: str | None = None
+    match_strength: float = 0.35
 
 
 class ExportBody(MasterBody):
@@ -118,6 +125,16 @@ def _resolve_preset(preset_id: str, overrides: dict | None):
         return preset.with_overrides(overrides or {})
     except (TypeError, ValueError) as exc:
         raise _http_error(422, "invalid_overrides", str(exc)) from exc
+
+
+def _validate_match_strength(value: float) -> None:
+    """Cheap range check — fails fast as a real 4xx, mirroring
+    _resolve_preset. Reference PATH validity is a separate, more expensive
+    check that only the job worker can do (see _run_master)."""
+    if not 0.0 <= value <= 1.0:
+        raise _http_error(
+            422, "invalid_match_strength", f"match_strength must be within [0, 1], got {value}"
+        )
 
 
 @app.get("/health")
@@ -147,17 +164,38 @@ async def analyze_endpoint(body: AnalyzeBody) -> dict:
     return {"job_id": store.submit(work)}
 
 
+@app.post("/reference-analyze", status_code=202)
+async def reference_analyze_endpoint(body: ReferenceAnalyzeBody) -> dict:
+    def work(progress) -> dict:
+        progress("loading", 0.1)
+        loaded = load_audio(body.path)
+        progress("analyzing", 0.4)
+        return analyze_reference(loaded.samples, loaded.sample_rate).to_dict()
+
+    return {"job_id": store.submit(work)}
+
+
 def _run_master(body: MasterBody, preset, progress) -> tuple:
     loaded = load_audio(body.path)
     input_analysis = analyze(loaded.samples, loaded.sample_rate, loaded.bit_depth)
+    reference_profile = None
+    if body.reference_path:
+        # Loaded (and thus validated) in the job worker, same as the main
+        # path — a bad reference produces a clean job error, not a 4xx.
+        ref_loaded = load_audio(body.reference_path)
+        reference_profile = analyze_reference(ref_loaded.samples, ref_loaded.sample_rate)
     scaled = lambda stage, frac: progress(stage, 0.2 + frac * 0.7)  # noqa: E731
-    result = master(loaded.samples, loaded.sample_rate, preset, progress=scaled)
+    result = master(
+        loaded.samples, loaded.sample_rate, preset, progress=scaled,
+        reference_profile=reference_profile, match_strength=body.match_strength,
+    )
     return loaded, preset, input_analysis, result
 
 
 @app.post("/master", status_code=202)
 async def master_endpoint(body: MasterBody) -> dict:
     resolved = _resolve_preset(body.preset_id, body.overrides)
+    _validate_match_strength(body.match_strength)
 
     def work(progress) -> dict:
         progress("loading", 0.05)
@@ -187,6 +225,7 @@ async def master_endpoint(body: MasterBody) -> dict:
 @app.post("/export", status_code=202)
 async def export_endpoint(body: ExportBody) -> dict:
     resolved = _resolve_preset(body.preset_id, body.overrides)
+    _validate_match_strength(body.match_strength)
 
     def work(progress) -> dict:
         started = time.monotonic()

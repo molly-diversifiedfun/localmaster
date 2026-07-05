@@ -1,8 +1,9 @@
 """Fixed-order mastering chain runner. Deterministic and non-mutating.
 
-Order (spec section C): DC removal → high-pass → corrective EQ → compressor →
-saturation → stereo/mono-bass → loudness normalization (transient guard) →
-limiter. Dither happens at export time (16-bit only).
+Order (spec section C): DC removal → high-pass → corrective EQ → [reference
+match, if a ReferenceProfile is supplied] → compressor → saturation →
+stereo/mono-bass → loudness normalization (transient guard) → limiter.
+Dither happens at export time (16-bit only).
 """
 from __future__ import annotations
 
@@ -17,9 +18,11 @@ from localmaster_engine.chain import (
     eq,
     highpass,
     loudness,
+    reference,
     saturation,
     stereo,
 )
+from localmaster_engine.chain.reference import ReferenceProfile
 from localmaster_engine.presets import Preset
 
 ProgressCallback = Callable[[str, float], None]
@@ -33,12 +36,23 @@ class MasterResult:
     warnings: list[str]
 
 
-def _stages(preset: Preset) -> list[tuple[str, Callable[[np.ndarray, int], tuple[np.ndarray, dict]]]]:
+def _stages(
+    preset: Preset,
+    reference_profile: ReferenceProfile | None = None,
+    match_strength: float = 0.35,
+) -> list[tuple[str, Callable[[np.ndarray, int], tuple[np.ndarray, dict]]]]:
     steps: list[tuple[str, Callable]] = []
     if preset.remove_dc:
         steps.append(("dc_offset", dc_offset.process))
     steps.append(("highpass", lambda s, sr: highpass.process(s, sr, cutoff_hz=preset.highpass_hz)))
     steps.append(("eq", lambda s, sr: eq.process(s, sr, bands=preset.eq_bands)))
+    if reference_profile is not None:
+        steps.append(
+            (
+                "reference_match",
+                lambda s, sr: reference.apply_matching(s, sr, reference_profile, match_strength),
+            )
+        )
     steps.append(
         ("compressor", lambda s, sr: compressor.process(
             s, sr,
@@ -90,8 +104,10 @@ def master(
     sample_rate: int,
     preset: Preset,
     progress: ProgressCallback | None = None,
+    reference_profile: ReferenceProfile | None = None,
+    match_strength: float = 0.35,
 ) -> MasterResult:
-    stages = _stages(preset)
+    stages = _stages(preset, reference_profile, match_strength)
     current = samples
     stage_meta: list[dict] = []
     for i, (name, fn) in enumerate(stages):

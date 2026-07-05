@@ -20,10 +20,23 @@ Errors: HTTP 4xx/5xx with `{"error": {"code": string, "message": string}}`.
 → `202 {"job_id": string}`.
 Job result: `AnalysisReport` (see below).
 
+### `POST /reference-analyze` body `{"path": string}`
+→ `202 {"job_id": string}`.
+Job result: `ReferenceProfile` (see below). Pure function of the file — safe
+for the client to cache keyed on the reference path.
+
 ### `POST /master` body:
 ```json
-{"path": string, "preset_id": string, "overrides": {<any Preset field>}?}
+{"path": string, "preset_id": string, "overrides": {<any Preset field>}?,
+ "reference_path": string?, "match_strength": number = 0.35}
 ```
+`reference_path`, if given, is loaded and analyzed server-side in the job
+worker (an invalid reference file produces a normal job `error`, not a
+synchronous 4xx — same treatment as `path`). `match_strength` (0..1,
+conservative default 0.35 — the reference-matching stage shapes spectrum and
+stereo width toward the reference at this strength; program loudness always
+stays owned by the loudness stage). An out-of-range `match_strength` is
+rejected synchronously (`422 invalid_match_strength`).
 → `202 {"job_id": string}`.
 Job result:
 ```json
@@ -32,6 +45,9 @@ Job result:
   "input_analysis": AnalysisReport,
   "output_analysis": AnalysisReport,
   "stage_meta": object[],          // per-stage params incl. loudness iterations
+                                    // and, if reference_path was given, a
+                                    // "reference_match" stage entry (strength,
+                                    // mid_band_deltas_db, side_band_deltas_db)
   "warnings": string[],
   "ab_gain_db": number             // ADD to master playback gain (≤0) for
 }                                  // volume-matched A/B vs the original
@@ -40,6 +56,7 @@ Job result:
 ### `POST /export` body:
 ```json
 {"path": string, "preset_id": string, "overrides": object?,
+ "reference_path": string?, "match_strength": number = 0.35,
  "out_dir": string, "bit_depth": 16|24|32?,
  "trim_silence": bool = false, "fade_in_ms": number = 0, "fade_out_ms": number = 0}
 ```
@@ -88,6 +105,17 @@ transient guard capped one dynamic track.
  "stereo_imbalance_db": number, "has_stereo_imbalance": bool,
  "leading_silence_seconds": number, "trailing_silence_seconds": number,
  "waveform_overview": [ [min,max], ... ]}   // 1000 bins for UI rendering
+```
+
+## ReferenceProfile shape
+```json
+{"sample_rate": int, "freqs_hz": number[], "mid_spectrum": number[],
+ "side_spectrum": number[],           // averaged loudest-pieces STFT magnitude
+                                       // (mid/side decomposition), same length as freqs_hz
+ "piece_gated_lufs": number,          // BS.1770 loudness over the loudest pieces only
+ "mid_side_ratio_db": number,         // side RMS relative to mid RMS (width reference)
+ "true_peak_dbtp": number,
+ "n_pieces_total": int, "n_pieces_loudest": int, "piece_seconds": number}
 ```
 
 ## Preset fields (all overridable)
