@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  engine:
+    name: engine (pytest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/audio-engine
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - run: uv sync
+      - run: uv run pytest
+
+  desktop:
+    name: desktop (tsc + vite + vitest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - run: npx vitest run
+
+  # Rust/Tauri compile check is intentionally absent for now: ubuntu runners
+  # need the full webkit2gtk system-dependency stack for Tauri, which triples
+  # CI time for a compile-only signal. Tracked in the roadmap.

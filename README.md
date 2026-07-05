@@ -1,5 +1,7 @@
 # LocalMaster
 
+[![CI](https://github.com/molly-diversifiedfun/localmaster/actions/workflows/ci.yml/badge.svg)](https://github.com/molly-diversifiedfun/localmaster/actions/workflows/ci.yml)
+
 Local-first, open-source mastering for your own tracks — built for the
 Suno-export → DJ-ready-WAV workflow.
 
