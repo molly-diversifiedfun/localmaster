@@ -16,10 +16,7 @@ export function JobProgress({
 
   if (status === "error") {
     return (
-      <p
-        className="text-sm text-studio-danger"
-        data-testid="job-progress-error"
-      >
+      <p className="text-sm text-error" data-testid="job-progress-error">
         Failed: {errorMessage ?? "Unknown error"}
       </p>
     );
@@ -27,13 +24,13 @@ export function JobProgress({
 
   return (
     <div className="flex flex-col gap-1" data-testid="job-progress">
-      <div className="flex justify-between text-xs text-studio-text-dim">
+      <div className="flex justify-between font-mono text-xs uppercase tracking-wide text-text-secondary">
         <span>{stage ?? status}</span>
         <span>{Math.round(progress * 100)}%</span>
       </div>
-      <div className="h-1.5 w-full rounded bg-studio-panel-raised">
+      <div className="h-1.5 w-full rounded-md bg-background">
         <div
-          className="h-1.5 rounded bg-studio-accent transition-[width]"
+          className="h-1.5 rounded-md bg-brand transition-[width] duration-base ease-default"
           style={{ width: `${Math.round(progress * 100)}%` }}
         />
       </div>

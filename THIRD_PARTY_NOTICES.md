@@ -29,6 +29,8 @@ upstream repository license files).
 | vite | 8.x | MIT |
 | typescript | 6.x | Apache-2.0 |
 | tailwindcss | 4.x | MIT |
+| @fontsource/ibm-plex-sans | 5.2.x | OFL-1.1 (font) / MIT (packaging) — bundled locally, no CDN |
+| @fontsource/ibm-plex-mono | 5.2.x | OFL-1.1 (font) / MIT (packaging) — bundled locally, no CDN |
 
 ## Storage
 

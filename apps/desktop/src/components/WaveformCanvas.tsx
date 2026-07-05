@@ -11,7 +11,7 @@ interface WaveformCanvasProps {
 /** Renders precomputed [min,max] envelope bins to a canvas — no audio decoding in the UI. */
 export function WaveformCanvas({
   bins,
-  color = "#5ee6c8",
+  color = "#42D799",
   height = 96,
   className,
 }: WaveformCanvasProps) {

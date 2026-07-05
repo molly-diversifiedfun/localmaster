@@ -7,6 +7,13 @@ import { BatchScreen } from "./BatchScreen";
 import type { BatchJobResult, Preset, PresetsResponse } from "@shared/types";
 
 vi.mock("../lib/api", () => ({
+  getHealth: vi
+    .fn()
+    .mockResolvedValue({
+      status: "ok",
+      version: "0.1.0",
+      engine: "localmaster",
+    }),
   getPresets: vi.fn(),
   batchAndWait: vi.fn(),
   ApiError: class ApiError extends Error {},
@@ -130,7 +137,7 @@ describe("BatchScreen", () => {
 
     await userEvent.click(screen.getByText("Choose WAV files…"));
     await userEvent.click(screen.getByText("Choose output folder…"));
-    await userEvent.click(screen.getByText("Run batch"));
+    await userEvent.click(screen.getByText("Master album"));
 
     await waitFor(() =>
       expect(screen.getByTestId("shared-target-headline")).toBeInTheDocument(),
@@ -151,9 +158,11 @@ describe("BatchScreen", () => {
 
     const table = screen.getByTestId("batch-summary-table");
     expect(table).toHaveTextContent("track1.wav");
-    expect(table).toHaveTextContent("All checks passed");
+    expect(table).toHaveTextContent("PASS");
+    expect(table).toHaveTextContent("No clipping");
     expect(table).toHaveTextContent("track2.wav");
-    expect(table).toHaveTextContent("loudness_within_tolerance");
+    expect(table).toHaveTextContent("FAIL");
+    expect(table).toHaveTextContent("Loudness within tolerance");
   });
 
   it("shows a job error when the batch job fails", async () => {
@@ -168,7 +177,7 @@ describe("BatchScreen", () => {
 
     await userEvent.click(screen.getByText("Choose WAV files…"));
     await userEvent.click(screen.getByText("Choose output folder…"));
-    await userEvent.click(screen.getByText("Run batch"));
+    await userEvent.click(screen.getByText("Master album"));
 
     await waitFor(() =>
       expect(screen.getByTestId("job-progress-error")).toBeInTheDocument(),

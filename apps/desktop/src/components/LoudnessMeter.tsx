@@ -24,20 +24,20 @@ export function LoudnessMeter({
 
   return (
     <div className="flex flex-col gap-1">
-      <div className="flex justify-between text-xs text-studio-text-dim">
+      <div className="flex justify-between text-xs uppercase tracking-wide text-text-secondary">
         <span>{label}</span>
-        <span className="font-mono text-studio-text">
+        <span className="font-mono text-text">
           {value.toFixed(1)} {unit}
         </span>
       </div>
-      <div className="relative h-3 w-full rounded bg-studio-panel-raised">
+      <div className="relative h-3 w-full rounded-md bg-background">
         <div
-          className="absolute inset-y-0 left-0 rounded bg-studio-accent"
+          className="absolute inset-y-0 left-0 rounded-md bg-brand transition-[width] duration-base ease-default"
           style={{ width: `${valuePct}%` }}
         />
         {targetPct !== null && (
           <div
-            className="absolute inset-y-0 w-0.5 bg-studio-warn"
+            className="absolute inset-y-0 w-0.5 bg-warning"
             style={{ left: `${targetPct}%` }}
             data-testid="loudness-target-tick"
           />

@@ -1,22 +1,26 @@
-@import "tailwindcss";
+/*
+ * Design system: .design/localmaster-desktop.md is the validated manifest;
+ * localmaster-desktop.theme.css is its generated Tailwind v4 @theme block.
+ * Imported (not copied) so the manifest stays the single source of truth —
+ * this resolves at build time, so the shipped app has no runtime dependency
+ * on the repo root.
+ */
+@import "../../../.design/localmaster-desktop.theme.css";
 
-@theme {
-  --color-studio-bg: #0e0f12;
-  --color-studio-panel: #17191d;
-  --color-studio-panel-raised: #1f2227;
-  --color-studio-border: #2a2d33;
-  --color-studio-text: #e6e7ea;
-  --color-studio-text-dim: #9a9da5;
-  --color-studio-accent: #5ee6c8;
-  --color-studio-warn: #f2b84b;
-  --color-studio-danger: #f26d6d;
-}
+/* IBM Plex, bundled locally via @fontsource — no CDN/external requests
+   (Tauri CSP + hard privacy constraint: "No telemetry. 100% local processing.").
+   Latin-only subsets: the UI copy is English-only, and the full subset set
+   (cyrillic/greek/vietnamese/etc.) would ~5x the bundled font weight for
+   no benefit here. */
+@import "@fontsource/ibm-plex-sans/latin-400.css";
+@import "@fontsource/ibm-plex-sans/latin-500.css";
+@import "@fontsource/ibm-plex-sans/latin-600.css";
+@import "@fontsource/ibm-plex-sans/latin-700.css";
+@import "@fontsource/ibm-plex-mono/latin-400.css";
+@import "@fontsource/ibm-plex-mono/latin-500.css";
 
-body {
-  @apply bg-studio-bg text-studio-text antialiased;
-  font-family:
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    sans-serif;
+@layer base {
+  body {
+    @apply bg-background font-body text-text antialiased;
+  }
 }

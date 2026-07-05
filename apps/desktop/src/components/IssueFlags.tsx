@@ -31,7 +31,7 @@ export function IssueFlags({ analysis }: IssueFlagsProps) {
 
   if (flags.length === 0) {
     return (
-      <p className="text-sm text-studio-accent" data-testid="issue-flags-clean">
+      <p className="text-sm text-brand" data-testid="issue-flags-clean">
         No issues detected.
       </p>
     );
@@ -40,7 +40,7 @@ export function IssueFlags({ analysis }: IssueFlagsProps) {
   return (
     <ul className="flex flex-col gap-1" data-testid="issue-flags-list">
       {flags.map((flag) => (
-        <li key={flag.label} className="text-sm text-studio-danger">
+        <li key={flag.label} className="text-sm text-error">
           {flag.label}
         </li>
       ))}

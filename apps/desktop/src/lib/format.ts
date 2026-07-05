@@ -1,8 +1,14 @@
 /** Pure formatting/naming helpers shared across screens. */
+import type { AnalysisReport } from "@shared/types";
 
 export function basename(path: string): string {
   const parts = path.split(/[\\/]/);
   return parts[parts.length - 1] ?? path;
+}
+
+export function dirname(path: string): string {
+  const idx = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
+  return idx <= 0 ? path : path.slice(0, idx);
 }
 
 export function stripExtension(filename: string): string {
@@ -35,6 +41,27 @@ export function formatDuration(seconds: number): string {
 
 export function formatBitDepth(bitDepth: number): string {
   return `${bitDepth}-bit`;
+}
+
+export function formatBitRate(
+  bitDepth: number | null,
+  sampleRate: number,
+): string {
+  const bits = bitDepth ?? 32;
+  return `${bits}bit/${Math.round(sampleRate / 1000)}k`;
+}
+
+/**
+ * The matrix-stamp triplet for a measurement — LUFS, true peak, bit/sample
+ * rate — joined with " · " by the MatrixStamp component. Kept as pure data
+ * here so the signature element stays a dumb renderer.
+ */
+export function matrixStampValues(analysis: AnalysisReport): string[] {
+  return [
+    formatLufs(analysis.integrated_lufs),
+    formatDbtp(analysis.true_peak_dbtp),
+    formatBitRate(analysis.bit_depth, analysis.sample_rate),
+  ];
 }
 
 /**

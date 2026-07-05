@@ -107,7 +107,7 @@ export function PresetControlsPanel({
     <div className="flex flex-col gap-4" data-testid="preset-controls-panel">
       {groups.map((group) => (
         <div key={group}>
-          <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-studio-text-dim">
+          <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-text-secondary">
             {group}
           </h3>
           <div className="flex flex-col gap-2">
@@ -118,7 +118,7 @@ export function PresetControlsPanel({
                   key={field.key}
                   className="flex items-center justify-between gap-2 text-xs"
                 >
-                  <span className="text-studio-text-dim">{field.label}</span>
+                  <span className="text-text-secondary">{field.label}</span>
                   <input
                     type="number"
                     step={field.step}
@@ -126,7 +126,7 @@ export function PresetControlsPanel({
                     onChange={(e) =>
                       setField(field.key, Number(e.target.value))
                     }
-                    className="w-20 rounded border border-studio-border bg-studio-panel-raised px-1.5 py-0.5 text-right font-mono text-studio-text"
+                    className="w-20 rounded-md border border-border bg-background px-1.5 py-0.5 text-right font-mono text-text"
                   />
                 </label>
               );
@@ -137,7 +137,7 @@ export function PresetControlsPanel({
       <button
         type="button"
         onClick={() => onChange({})}
-        className="w-fit text-xs text-studio-text-dim underline hover:text-studio-text"
+        className="w-fit text-xs text-text-secondary underline hover:text-text"
       >
         Reset to preset defaults
       </button>

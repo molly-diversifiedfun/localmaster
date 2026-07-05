@@ -22,6 +22,7 @@ export function useAbPlayback(
 ) {
   const [activeSide, setActiveSide] = useState<AbSide>("master");
   const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
   const nodesRef = useRef<AbPlaybackNodes | null>(null);
 
   useEffect(() => {
@@ -42,6 +43,9 @@ export function useAbPlayback(
     masterEl.crossOrigin = "anonymous";
     originalEl.loop = true;
     masterEl.loop = true;
+    originalEl.addEventListener("timeupdate", () =>
+      setCurrentTime(originalEl.currentTime),
+    );
 
     const originalGain = context.createGain();
     const masterGain = context.createGain();
@@ -95,5 +99,19 @@ export function useAbPlayback(
     setActiveSide((side) => (side === "original" ? "master" : "original"));
   }, []);
 
-  return { activeSide, isPlaying, play, pause, toggleSide };
+  /** Seeks both elements to `fraction` (0..1) of the original's duration, keeping lockstep. */
+  const seek = useCallback(
+    (fraction: number) => {
+      const nodes = ensureNodes();
+      if (!nodes) return;
+      const duration = nodes.originalEl.duration || 0;
+      const time = Math.min(Math.max(fraction, 0), 1) * duration;
+      nodes.originalEl.currentTime = time;
+      nodes.masterEl.currentTime = time;
+      setCurrentTime(time);
+    },
+    [ensureNodes],
+  );
+
+  return { activeSide, isPlaying, currentTime, play, pause, toggleSide, seek };
 }

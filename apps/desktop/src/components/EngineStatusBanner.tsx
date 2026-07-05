@@ -39,9 +39,9 @@ export function EngineStatusBanner() {
   if (status !== "offline") return null;
 
   return (
-    <div className="border-b border-studio-border bg-studio-danger/10 px-4 py-2 text-sm text-studio-danger">
+    <div className="border-b border-border bg-error/10 px-4 py-2 text-sm text-error">
       Engine not running — start it manually:{" "}
-      <code className="rounded bg-studio-panel-raised px-1.5 py-0.5 font-mono text-xs">
+      <code className="rounded-md bg-surface px-1.5 py-0.5 font-mono text-xs">
         {RUN_COMMAND}
       </code>
     </div>

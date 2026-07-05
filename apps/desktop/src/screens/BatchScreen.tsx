@@ -1,21 +1,40 @@
 import { useEffect, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { useAppState } from "../state/app-state";
 import { getPresets, batchAndWait, ApiError } from "../lib/api";
 import { pickWavFiles, pickDirectory } from "../lib/tauri";
-import { PresetSelector } from "../components/PresetSelector";
+import { PresetRow } from "../components/PresetRow";
 import { JobProgress } from "../components/JobProgress";
+import { DjChecklist } from "../components/DjChecklist";
+import { AppShell } from "../components/AppShell";
+import { getRailStatus, type RailStageId } from "../state/flow-state";
 import { basename } from "../lib/format";
 import type { BatchJobResult, BitDepth } from "@shared/types";
 
 type BatchStatus = "idle" | "queued" | "running" | "done" | "error";
 
 const BIT_DEPTHS: BitDepth[] = [16, 24, 32];
+const DJ_DEFAULT_ID = "clean_dj";
+const RAIL_IDS: RailStageId[] = ["import", "analyze", "master", "export"];
+const RAIL_LABELS: Record<RailStageId, string> = {
+  import: "Import",
+  analyze: "Analyze",
+  master: "Master",
+  export: "Export",
+};
 
-/** Batch/Album screen: one POST /batch job (two-pass shared-target loudness) across all selected tracks. */
+interface BatchLocationState {
+  paths?: string[];
+}
+
+/** Batch/album flow: one preset, one POST /batch job (two-pass shared-target loudness) across all selected tracks. */
 export function BatchScreen() {
+  const location = useLocation();
   const { presets, setPresets, selectedPresetId, setSelectedPresetId } =
     useAppState();
-  const [paths, setPaths] = useState<string[]>([]);
+  const initialPaths =
+    (location.state as BatchLocationState | null)?.paths ?? [];
+  const [paths, setPaths] = useState<string[]>(initialPaths);
   const [outDir, setOutDir] = useState<string | null>(null);
   const [bitDepth, setBitDepth] = useState<BitDepth>(24);
 
@@ -30,8 +49,9 @@ export function BatchScreen() {
     getPresets()
       .then((res) => {
         setPresets(res.presets);
-        if (!selectedPresetId && res.presets[0])
-          setSelectedPresetId(res.presets[0].id);
+        const djDefault =
+          res.presets.find((p) => p.id === DJ_DEFAULT_ID) ?? res.presets[0];
+        if (!selectedPresetId && djDefault) setSelectedPresetId(djDefault.id);
       })
       .catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -80,128 +100,140 @@ export function BatchScreen() {
 
   const isRunning = status === "queued" || status === "running";
 
+  const flowStage =
+    status === "done"
+      ? "exported"
+      : isRunning
+        ? "exporting"
+        : paths.length > 0
+          ? "track"
+          : "drop";
+  const railStages = RAIL_IDS.map((id) => ({
+    id,
+    label: RAIL_LABELS[id],
+    status: getRailStatus(flowStage, id),
+  }));
+
   return (
-    <div className="flex max-w-4xl flex-col gap-6">
-      <h1 className="text-xl font-semibold">Batch / Album</h1>
+    <AppShell stages={railStages}>
+      <div
+        className="mx-auto flex max-w-[1400px] flex-col gap-8 px-[clamp(1.5rem,4vw,3rem)] py-10"
+        data-testid="batch-screen"
+      >
+        <h1 className="text-lg font-semibold">Master an album</h1>
 
-      <div className="flex gap-3">
-        <button
-          type="button"
-          onClick={handlePickFiles}
-          className="w-fit rounded bg-studio-panel-raised px-3 py-1.5 text-sm hover:text-studio-accent"
-        >
-          Choose WAV files…
-        </button>
-        <button
-          type="button"
-          onClick={handlePickOutDir}
-          className="w-fit rounded bg-studio-panel-raised px-3 py-1.5 text-sm hover:text-studio-accent"
-        >
-          {outDir ? `Output: ${outDir}` : "Choose output folder…"}
-        </button>
-        <select
-          value={bitDepth}
-          onChange={(e) => setBitDepth(Number(e.target.value) as BitDepth)}
-          className="rounded border border-studio-border bg-studio-panel-raised px-2 py-1 text-sm"
-        >
-          {BIT_DEPTHS.map((depth) => (
-            <option key={depth} value={depth}>
-              {depth}-bit
-            </option>
-          ))}
-        </select>
-      </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={handlePickFiles}
+            className="rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-text-secondary hover:text-text"
+          >
+            Choose WAV files…
+          </button>
+          <button
+            type="button"
+            onClick={handlePickOutDir}
+            className="rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-text-secondary hover:text-text"
+          >
+            {outDir ? `Output: ${outDir}` : "Choose output folder…"}
+          </button>
+          <select
+            value={bitDepth}
+            onChange={(e) => setBitDepth(Number(e.target.value) as BitDepth)}
+            className="rounded-md border border-border bg-surface px-2 py-1 text-sm text-text"
+          >
+            {BIT_DEPTHS.map((depth) => (
+              <option key={depth} value={depth}>
+                {depth}-bit
+              </option>
+            ))}
+          </select>
+        </div>
 
-      <div className="w-64">
-        <PresetSelector
+        <PresetRow
           presets={presets}
           selectedPresetId={selectedPresetId}
           onSelect={setSelectedPresetId}
         />
-      </div>
 
-      {paths.length > 0 && !result && (
-        <ul
-          className="flex flex-col gap-1 text-sm text-studio-text-dim"
-          data-testid="batch-file-list"
-        >
-          {paths.map((path, i) => (
-            <li key={`${path}-${i}`}>{basename(path)}</li>
-          ))}
-        </ul>
-      )}
-
-      <JobProgress
-        status={status}
-        progress={progress}
-        stage={stage}
-        errorMessage={error}
-      />
-
-      {result && (
-        <div className="flex flex-col gap-3">
-          <p
-            className="text-sm text-studio-accent"
-            data-testid="shared-target-headline"
+        {paths.length > 0 && !result && (
+          <ul
+            className="flex flex-col gap-1 text-sm text-text-secondary"
+            data-testid="batch-file-list"
           >
-            Album matched to {result.shared_target_lufs.toFixed(1)} LUFS
-          </p>
+            {paths.map((path, i) => (
+              <li key={`${path}-${i}`}>{basename(path)}</li>
+            ))}
+          </ul>
+        )}
 
-          {result.warnings.length > 0 && (
-            <ul
-              className="flex flex-col gap-1"
-              data-testid="batch-warnings-list"
+        <JobProgress
+          status={status}
+          progress={progress}
+          stage={stage}
+          errorMessage={error}
+        />
+
+        {result && (
+          <div className="flex flex-col gap-4">
+            <p
+              className="font-mono text-sm uppercase tracking-wide text-brand"
+              data-testid="shared-target-headline"
             >
-              {result.warnings.map((warning) => (
-                <li key={warning} className="text-sm text-studio-warn">
-                  {warning}
-                </li>
-              ))}
-            </ul>
-          )}
+              Album matched to {result.shared_target_lufs.toFixed(1)} LUFS
+            </p>
 
-          <table
-            className="w-full text-left text-sm"
-            data-testid="batch-summary-table"
-          >
-            <thead className="text-studio-text-dim">
-              <tr>
-                <th className="pb-2">Track</th>
-                <th className="pb-2">Checklist</th>
-              </tr>
-            </thead>
-            <tbody>
-              {result.exports.map((exportResult, i) => {
-                const path = paths[i] ?? exportResult.out_path;
-                const failedChecks = Object.entries(
-                  exportResult.checklist,
-                ).filter(([, ok]) => !ok);
-                return (
-                  <tr key={`${path}-${i}`} className="border-t border-studio-border">
-                    <td className="py-2 pr-4">{basename(path)}</td>
-                    <td className="py-2">
-                      {failedChecks.length === 0
-                        ? "All checks passed"
-                        : failedChecks.map(([key]) => key).join(", ")}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
+            {result.warnings.length > 0 && (
+              <ul
+                className="flex flex-col gap-1"
+                data-testid="batch-warnings-list"
+              >
+                {result.warnings.map((warning) => (
+                  <li key={warning} className="text-sm text-warning">
+                    {warning}
+                  </li>
+                ))}
+              </ul>
+            )}
 
-      <button
-        type="button"
-        onClick={handleRunBatch}
-        disabled={
-          !selectedPresetId || !outDir || paths.length === 0 || isRunning
-        }
-        className="w-fit rounded bg-studio-accent px-4 py-2 text-sm font-medium text-studio-bg hover:opacity-90 disabled:opacity-50"
-      >
-        Run batch
-      </button>
-    </div>
+            <table
+              className="w-full text-left text-sm"
+              data-testid="batch-summary-table"
+            >
+              <thead className="text-text-secondary">
+                <tr>
+                  <th className="pb-2">Track</th>
+                  <th className="pb-2">Checklist</th>
+                </tr>
+              </thead>
+              <tbody>
+                {result.exports.map((exportResult, i) => {
+                  const path = paths[i] ?? exportResult.out_path;
+                  return (
+                    <tr key={`${path}-${i}`} className="border-t border-border">
+                      <td className="py-2 pr-4 align-top">{basename(path)}</td>
+                      <td className="py-2">
+                        <DjChecklist checklist={exportResult.checklist} />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <button
+          type="button"
+          onClick={handleRunBatch}
+          disabled={
+            !selectedPresetId || !outDir || paths.length === 0 || isRunning
+          }
+          className="w-fit rounded-md bg-brand px-6 py-3 text-sm font-semibold text-background hover:opacity-90 disabled:opacity-50"
+        >
+          Master album
+        </button>
+      </div>
+    </AppShell>
   );
 }
