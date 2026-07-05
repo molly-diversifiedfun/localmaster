@@ -1,6 +1,12 @@
 # Spec — Reference-matching UI (LocalMaster Issue #1)
 
-Date: 2026-07-05 · Status: ready to build · Scope: M · Engine/API DONE (431b9ba)
+Date: 2026-07-05 · Status: SHIPPED (PR for Issue #1) · Scope: M · Engine/API DONE (431b9ba)
+
+> Completion note: all 13 acceptance criteria verified — 1–9 live against the real
+> engine (Playwright + vite dev + `__TAURI_INTERNALS__` dialog stub), 10–12 by vitest,
+> 13 unreachable by construction. The rendered-screenshot check caught a real contract
+> drift the 110-test suite missed: the engine emits `mid/side_band_deltas_db` as
+> label→dB records, not arrays (fixed in c20b631; contract doc updated).
 
 ## User story
 
