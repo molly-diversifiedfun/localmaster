@@ -31,7 +31,7 @@ audit hook and fails on any outbound connection.
   sidecar JSON + human-readable TXT report with a DJ readiness checklist
 - Non-destructive always: your input file is never modified (byte-hash tested)
 
-*Screenshots: TODO — placeholder until the UI settles.*
+![LocalMaster — drop a WAV to master it](docs/images/drop-surface.png)
 
 ## Install (macOS, from source)
 
@@ -39,7 +39,7 @@ Prereqs: [Homebrew](https://brew.sh), then:
 
 ```bash
 brew install uv node rustup && rustup-init -y
-git clone <this-repo> && cd localmaster
+git clone https://github.com/molly-diversifiedfun/localmaster.git && cd localmaster
 make setup      # uv sync + npm install
 make dev        # engine (127.0.0.1:48750) + desktop app
 ```
