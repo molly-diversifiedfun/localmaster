@@ -1,11 +1,16 @@
 import { useState } from "react";
 import type { Preset, PresetOverrides } from "@shared/types";
 import { PresetControlsPanel } from "./PresetControlsPanel";
+import { ReferenceMatchControl } from "./ReferenceMatchControl";
 
 interface AdjustDrawerProps {
   preset: Preset | null;
   overrides: PresetOverrides;
   onChange: (overrides: PresetOverrides) => void;
+  referencePath: string | null;
+  matchStrength: number;
+  onReferenceChange: (path: string | null) => void;
+  onStrengthChange: (strength: number) => void;
   /** True once the user has changed something since the last render — shows the Re-master CTA. */
   dirty: boolean;
   onRemaster: () => void;
@@ -20,6 +25,10 @@ export function AdjustDrawer({
   preset,
   overrides,
   onChange,
+  referencePath,
+  matchStrength,
+  onReferenceChange,
+  onStrengthChange,
   dirty,
   onRemaster,
 }: AdjustDrawerProps) {
@@ -42,11 +51,19 @@ export function AdjustDrawer({
       </button>
       {open && (
         <div className="border-t border-border px-4 py-4">
-          <PresetControlsPanel
-            preset={preset}
-            overrides={overrides}
-            onChange={onChange}
+          <ReferenceMatchControl
+            referencePath={referencePath}
+            matchStrength={matchStrength}
+            onReferenceChange={onReferenceChange}
+            onStrengthChange={onStrengthChange}
           />
+          <div className="mt-4">
+            <PresetControlsPanel
+              preset={preset}
+              overrides={overrides}
+              onChange={onChange}
+            />
+          </div>
           {dirty && (
             <button
               type="button"

@@ -1,21 +1,33 @@
-import type { AnalysisReport, Preset, PresetOverrides } from "@shared/types";
+import type {
+  AnalysisReport,
+  Preset,
+  PresetOverrides,
+  StageMeta,
+} from "@shared/types";
 import type { useAbPlayback } from "../hooks/useAbPlayback";
 import { AbCompareHero } from "./AbCompareHero";
 import { FlipControl } from "./FlipControl";
 import { MatrixStamp } from "./MatrixStamp";
 import { AdjustDrawer } from "./AdjustDrawer";
+import { ReferenceMatchStamp } from "./ReferenceMatchStamp";
 import { basename, matrixStampValues } from "../lib/format";
 
 interface ResultViewProps {
   path: string;
   inputAnalysis: AnalysisReport;
   outputAnalysis: AnalysisReport;
+  stageMeta: StageMeta[];
   warnings: string[];
   ab: ReturnType<typeof useAbPlayback>;
   preset: Preset | null;
   overrides: PresetOverrides;
   onOverridesChange: (overrides: PresetOverrides) => void;
   overridesDirty: boolean;
+  referencePath: string | null;
+  matchStrength: number;
+  onReferenceChange: (path: string | null) => void;
+  onStrengthChange: (strength: number) => void;
+  referenceDirty: boolean;
   onRemaster: () => void;
   onNewTrack: () => void;
   error: string | null;
@@ -30,12 +42,18 @@ export function ResultView({
   path,
   inputAnalysis,
   outputAnalysis,
+  stageMeta,
   warnings,
   ab,
   preset,
   overrides,
   onOverridesChange,
   overridesDirty,
+  referencePath,
+  matchStrength,
+  onReferenceChange,
+  onStrengthChange,
+  referenceDirty,
   onRemaster,
   onNewTrack,
   error,
@@ -86,6 +104,8 @@ export function ResultView({
         </div>
       </div>
 
+      <ReferenceMatchStamp stageMeta={stageMeta} />
+
       {warnings.length > 0 && (
         <ul className="flex flex-col gap-1" data-testid="warnings-list">
           {warnings.map((warning) => (
@@ -106,7 +126,11 @@ export function ResultView({
         preset={preset}
         overrides={overrides}
         onChange={onOverridesChange}
-        dirty={overridesDirty}
+        referencePath={referencePath}
+        matchStrength={matchStrength}
+        onReferenceChange={onReferenceChange}
+        onStrengthChange={onStrengthChange}
+        dirty={overridesDirty || referenceDirty}
         onRemaster={onRemaster}
       />
     </div>

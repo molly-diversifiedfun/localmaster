@@ -1,6 +1,6 @@
 import { useEffect, useReducer, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useAppState } from "../state/app-state";
+import { useAppState, DEFAULT_MATCH_STRENGTH } from "../state/app-state";
 import {
   flowReducer,
   initialFlowState,
@@ -55,6 +55,10 @@ export function InstrumentScreen() {
     setSelectedPresetId,
     overrides,
     setOverrides,
+    referencePath,
+    setReferencePath,
+    matchStrength,
+    setMatchStrength,
     masterResult,
     setMasterResult,
   } = useAppState();
@@ -66,6 +70,7 @@ export function InstrumentScreen() {
 
   const [recentFiles, setRecentFiles] = useState<string[]>([]);
   const [overridesDirty, setOverridesDirty] = useState(false);
+  const [referenceDirty, setReferenceDirty] = useState(false);
   const [exportResult, setExportResult] = useState<ExportJobResult | null>(
     null,
   );
@@ -112,6 +117,9 @@ export function InstrumentScreen() {
     setExportResult(null);
     setOverrides({});
     setOverridesDirty(false);
+    setReferencePath(null);
+    setMatchStrength(DEFAULT_MATCH_STRENGTH);
+    setReferenceDirty(false);
     setRecentFiles(addRecentFile(path));
     dispatch({ type: "DROP_FILE" });
     runAnalysis(path);
@@ -141,12 +149,35 @@ export function InstrumentScreen() {
     if (flow.stage === "result") setOverridesDirty(true);
   }
 
+  function handleReferenceChange(path: string | null) {
+    setReferencePath(path);
+    if (flow.stage === "result") setReferenceDirty(true);
+  }
+
+  function handleStrengthChange(strength: number) {
+    if (!referencePath) return; // defense-in-depth: control is also disabled
+    setMatchStrength(strength);
+    if (flow.stage === "result") setReferenceDirty(true);
+  }
+
+  /** Optional reference fields, spread into /master and /export bodies only when a reference is set. */
+  function referenceFields() {
+    return referencePath
+      ? { reference_path: referencePath, match_strength: matchStrength }
+      : {};
+  }
+
   async function handleMaster() {
     if (!currentPath || !selectedPresetId) return;
     dispatch({ type: "START_MASTER" });
     try {
       const result = await masterAndWait(
-        { path: currentPath, preset_id: selectedPresetId, overrides },
+        {
+          path: currentPath,
+          preset_id: selectedPresetId,
+          overrides,
+          ...referenceFields(),
+        },
         {
           onProgress: (state) =>
             dispatch({
@@ -159,6 +190,7 @@ export function InstrumentScreen() {
       setMasterResult(result);
       setExportResult(null); // the old export's checklist/paths no longer describe this master
       setOverridesDirty(false);
+      setReferenceDirty(false);
       dispatch({ type: "MASTER_SUCCESS" });
     } catch (err) {
       dispatch({
@@ -179,6 +211,7 @@ export function InstrumentScreen() {
           path: currentPath,
           preset_id: selectedPresetId,
           overrides,
+          ...referenceFields(),
           out_dir: outDir,
           bit_depth: bitDepth,
         },
@@ -208,6 +241,9 @@ export function InstrumentScreen() {
     setExportResult(null);
     setOverrides({});
     setOverridesDirty(false);
+    setReferencePath(null);
+    setMatchStrength(DEFAULT_MATCH_STRENGTH);
+    setReferenceDirty(false);
     dispatch({ type: "RESET" });
   }
 
@@ -304,12 +340,18 @@ export function InstrumentScreen() {
           path={currentPath}
           inputAnalysis={masterResult.input_analysis}
           outputAnalysis={masterResult.output_analysis}
+          stageMeta={masterResult.stage_meta}
           warnings={masterResult.warnings}
           ab={ab}
           preset={selectedPreset}
           overrides={overrides}
           onOverridesChange={handleOverridesChange}
           overridesDirty={overridesDirty}
+          referencePath={referencePath}
+          matchStrength={matchStrength}
+          onReferenceChange={handleReferenceChange}
+          onStrengthChange={handleStrengthChange}
+          referenceDirty={referenceDirty}
           onRemaster={handleMaster}
           onNewTrack={handleNewTrack}
           error={flow.errorSource === "master" ? flow.error : null}

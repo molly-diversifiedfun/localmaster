@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { AppStateProvider } from "../state/app-state";
@@ -12,21 +12,28 @@ import type {
 } from "@shared/types";
 
 vi.mock("../lib/api", () => ({
-  getHealth: vi
-    .fn()
-    .mockResolvedValue({
-      status: "ok",
-      version: "0.1.0",
-      engine: "localmaster",
-    }),
+  getHealth: vi.fn().mockResolvedValue({
+    status: "ok",
+    version: "0.1.0",
+    engine: "localmaster",
+  }),
   getPresets: vi.fn(),
   analyzeAndWait: vi.fn(),
   masterAndWait: vi.fn(),
   exportAndWait: vi.fn(),
-  ApiError: class ApiError extends Error {},
+  ApiError: class ApiError extends Error {
+    status: number;
+    code: string;
+    constructor(status: number, code: string, message: string) {
+      super(message);
+      this.status = status;
+      this.code = code;
+    }
+  },
 }));
 
 vi.mock("../lib/tauri", () => ({
+  pickWavFile: vi.fn(),
   pickWavFiles: vi.fn(),
   pickDirectory: vi.fn(),
   subscribeToFileDrop: vi.fn().mockRejectedValue(new Error("not in tauri")),
@@ -45,8 +52,13 @@ vi.mock("../hooks/useAbPlayback", () => ({
   }),
 }));
 
-import { getPresets, analyzeAndWait, masterAndWait } from "../lib/api";
-import { pickWavFiles } from "../lib/tauri";
+import {
+  getPresets,
+  analyzeAndWait,
+  masterAndWait,
+  ApiError,
+} from "../lib/api";
+import { pickWavFile, pickWavFiles } from "../lib/tauri";
 
 const presetFixture: Preset = {
   id: "clean_dj",
@@ -128,6 +140,7 @@ describe("InstrumentScreen", () => {
     vi.mocked(analyzeAndWait).mockReset();
     vi.mocked(masterAndWait).mockReset();
     vi.mocked(pickWavFiles).mockReset();
+    vi.mocked(pickWavFile).mockReset();
   });
 
   it("opens on the drop surface with no dashboard/nav-first chrome", () => {
@@ -200,5 +213,160 @@ describe("InstrumentScreen", () => {
       expect(screen.getByTestId("drop-error")).toBeInTheDocument(),
     );
     expect(screen.getByTestId("drop-surface")).toBeInTheDocument();
+  });
+});
+
+/** Walks drop -> analyze -> track -> master, landing on the result view. */
+async function walkToResult(
+  masterResult: MasterJobResult = masterResultFixture,
+) {
+  vi.mocked(pickWavFiles).mockResolvedValue(["/tracks/song.wav"]);
+  vi.mocked(analyzeAndWait).mockResolvedValue(analysisFixture);
+  vi.mocked(masterAndWait).mockResolvedValue(masterResult);
+
+  renderInstrument();
+  await userEvent.click(screen.getByText("Choose file(s)…"));
+  await waitFor(() =>
+    expect(screen.getByTestId("preset-selector")).toBeInTheDocument(),
+  );
+  await userEvent.click(screen.getByText("Clean DJ Master"));
+  await userEvent.click(screen.getByText("Master this track"));
+  await waitFor(() =>
+    expect(screen.getByTestId("result-view")).toBeInTheDocument(),
+  );
+}
+
+describe("InstrumentScreen — reference matching", () => {
+  beforeEach(() => {
+    vi.mocked(getPresets).mockReset().mockResolvedValue(presetsResponse);
+    vi.mocked(analyzeAndWait).mockReset();
+    vi.mocked(masterAndWait).mockReset();
+    vi.mocked(pickWavFiles).mockReset();
+    vi.mocked(pickWavFile).mockReset();
+  });
+
+  it("sends reference_path and match_strength to masterAndWait after picking a reference and re-mastering", async () => {
+    await walkToResult();
+    vi.mocked(pickWavFile).mockResolvedValue("/refs/warehouse.wav");
+
+    await userEvent.click(screen.getByText("Adjust"));
+    await userEvent.click(screen.getByText("Match a reference…"));
+    await waitFor(() =>
+      expect(screen.getByTestId("reference-clear")).toBeInTheDocument(),
+    );
+
+    await userEvent.click(screen.getByTestId("remaster-cta"));
+
+    await waitFor(() =>
+      expect(masterAndWait).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          reference_path: "/refs/warehouse.wav",
+          match_strength: 0.35,
+        }),
+        expect.any(Object),
+      ),
+    );
+  });
+
+  it("persists the reference and strength across a re-master without re-picking", async () => {
+    await walkToResult();
+    vi.mocked(pickWavFile).mockResolvedValue("/refs/warehouse.wav");
+
+    await userEvent.click(screen.getByText("Adjust"));
+    await userEvent.click(screen.getByText("Match a reference…"));
+    await waitFor(() =>
+      expect(screen.getByTestId("reference-clear")).toBeInTheDocument(),
+    );
+    await userEvent.click(screen.getByTestId("remaster-cta"));
+    await waitFor(() => expect(masterAndWait).toHaveBeenCalledTimes(2));
+
+    // ResultView unmounts during the "mastering" stage, so the drawer re-collapses; reopen it.
+    await userEvent.click(screen.getByText("Adjust"));
+
+    // Move the strength slider — no re-pick needed, the reference persists in shared app-state.
+    fireEvent.change(screen.getByTestId("reference-strength-slider"), {
+      target: { value: "60" },
+    });
+    await userEvent.click(screen.getByTestId("remaster-cta"));
+
+    await waitFor(() =>
+      expect(masterAndWait).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          reference_path: "/refs/warehouse.wav",
+          match_strength: 0.6,
+        }),
+        expect.any(Object),
+      ),
+    );
+  });
+
+  it("renders the reference-match stamp when the master result carries reference_match stage-meta", async () => {
+    await walkToResult({
+      ...masterResultFixture,
+      stage_meta: [
+        {
+          stage: "reference_match",
+          strength: 0.5,
+          mid_band_deltas_db: [1.2],
+          side_band_deltas_db: [-0.8],
+        },
+      ],
+    });
+
+    expect(screen.getByTestId("reference-match-stamp")).toHaveTextContent(
+      "50%",
+    );
+  });
+
+  it("keeps the prior result and surfaces the error when a re-master with a bad reference fails", async () => {
+    await walkToResult();
+    vi.mocked(pickWavFile).mockResolvedValue("/refs/bad.wav");
+
+    await userEvent.click(screen.getByText("Adjust"));
+    await userEvent.click(screen.getByText("Match a reference…"));
+    await waitFor(() =>
+      expect(screen.getByTestId("reference-clear")).toBeInTheDocument(),
+    );
+
+    vi.mocked(masterAndWait).mockRejectedValueOnce(
+      new ApiError(0, "INVALID_REFERENCE", "invalid reference file"),
+    );
+    await userEvent.click(screen.getByTestId("remaster-cta"));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("result-error")).toHaveTextContent(
+        "invalid reference file",
+      ),
+    );
+    expect(screen.getByTestId("result-view")).toBeInTheDocument();
+  });
+
+  it("clears the reference when a new file is picked", async () => {
+    await walkToResult();
+    vi.mocked(pickWavFile).mockResolvedValue("/refs/warehouse.wav");
+
+    await userEvent.click(screen.getByText("Adjust"));
+    await userEvent.click(screen.getByText("Match a reference…"));
+    await waitFor(() =>
+      expect(screen.getByTestId("reference-clear")).toBeInTheDocument(),
+    );
+
+    vi.mocked(pickWavFiles).mockResolvedValue(["/tracks/new-track.wav"]);
+    await userEvent.click(screen.getByText("New track"));
+    await userEvent.click(screen.getByText("Choose file(s)…"));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("track-view")).toBeInTheDocument(),
+    );
+    await userEvent.click(screen.getByText("Clean DJ Master"));
+    await userEvent.click(screen.getByText("Master this track"));
+    await waitFor(() =>
+      expect(screen.getByTestId("result-view")).toBeInTheDocument(),
+    );
+
+    expect(masterAndWait).toHaveBeenLastCalledWith(
+      expect.not.objectContaining({ reference_path: expect.anything() }),
+      expect.any(Object),
+    );
   });
 });
