@@ -5,7 +5,7 @@
  */
 import { open } from "@tauri-apps/plugin-dialog";
 import { open as openWithDefaultApp } from "@tauri-apps/plugin-shell";
-import { convertFileSrc } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 
 export async function pickWavFile(): Promise<string | null> {
@@ -30,6 +30,15 @@ export async function pickDirectory(): Promise<string | null> {
   return typeof selected === "string" ? selected : null;
 }
 
+/** Artwork picker for TrackMetadataForm — release bundle cover art. */
+export async function pickImageFile(): Promise<string | null> {
+  const selected = await open({
+    multiple: false,
+    filters: [{ name: "Image", extensions: ["png", "jpg", "jpeg"] }],
+  });
+  return typeof selected === "string" ? selected : null;
+}
+
 /** Local file path -> a URL the webview's <audio>/<img> tags can load. */
 export function toPlayableUrl(localPath: string): string {
   return convertFileSrc(localPath);
@@ -38,6 +47,35 @@ export function toPlayableUrl(localPath: string): string {
 /** Opens a local file with the OS default handler (e.g. a report .txt/.json). */
 export async function openInDefaultApp(path: string): Promise<void> {
   await openWithDefaultApp(path);
+}
+
+/** DistroKid's new-release upload page — the ADR 003 fallback when no local
+ * distribute plugin is configured in ~/.localmaster/plugins.json. */
+export const DISTROKID_NEW_RELEASE_URL = "https://distrokid.com/new/";
+
+export interface DistributePluginResult {
+  pluginInvoked: boolean;
+  pluginId: string | null;
+}
+
+/**
+ * Runs the user's configured local distribute plugin (ADR 003 —
+ * ~/.localmaster/plugins.json, a plugin id -> command map) against a
+ * release bundle directory via the Rust `run_distribute_plugin` command.
+ * When no plugin is configured, falls back to opening DistroKid's
+ * new-release page in the OS default browser. A plugin spawn/exit failure
+ * rejects (surfaced to the caller) instead of silently falling back.
+ */
+export async function runDistributePlugin(
+  bundleDir: string,
+): Promise<DistributePluginResult> {
+  const result = await invoke<DistributePluginResult>("run_distribute_plugin", {
+    bundleDir,
+  });
+  if (!result.pluginInvoked) {
+    await openWithDefaultApp(DISTROKID_NEW_RELEASE_URL);
+  }
+  return result;
 }
 
 /**

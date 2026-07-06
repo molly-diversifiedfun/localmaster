@@ -65,18 +65,61 @@ Job result:
 {"path": string, "preset_id": string, "overrides": object?,
  "reference_path": string?, "match_strength": number = 0.35,
  "out_dir": string, "bit_depth": 16|24|32?,
- "trim_silence": bool = false, "fade_in_ms": number = 0, "fade_out_ms": number = 0}
+ "trim_silence": bool = false, "fade_in_ms": number = 0, "fade_out_ms": number = 0,
+ "profile": "dj"|"release" = "dj", "metadata": TrackMetadata?}
 ```
 Re-renders deterministically (bit-identical to the preview) and writes
 `{orig}__LocalMaster__{preset}__{LUFS}LUFS__{sr}Hz__{bits}bit.wav` + sidecars.
+`profile` is synchronously validated (`422 invalid_profile` if not
+`"dj"|"release"`), mirroring `preset_id`/`match_strength`. `metadata`, when
+given, is synchronously validated too (`422 invalid_metadata` if `title`,
+`artist`, `primaryGenre`, or `artworkPath` is missing/empty) — independent
+of `profile`.
+
+`profile: "release"` selects the release checklist (adds
+`accepted_streaming_specs`, see below) instead of the DJ checklist, AND
+writes into a **dedicated per-release bundle subdirectory** of `out_dir`
+(never `out_dir` itself) — named `"<artist> - <title>"` (sanitized for the
+filesystem) when `metadata` has both, else the original file's stem, with a
+`__2`/`__3`/… suffix if that name is already taken under `out_dir`. This
+keeps a shared `out_dir` (e.g. the desktop's persisted default export dir)
+from ever letting one track's bundle collide with another's — the release
+master WAV, `metadata.json`, artwork, and reports all land together in that
+one bundle subdir, which is the directory a distribute plugin is invoked
+against (ADR 003). `profile: "dj"` (default) writes flat into `out_dir`,
+unchanged.
+
+Independent of `profile`: when `metadata` is given, the engine writes
+`metadata.json` into the bundle dir (or `out_dir` directly for a
+dj-profile export) and, if `metadata.artworkPath` is set, copies that file
+alongside it and rewrites `artworkPath` in the written sidecar to the
+bundle-relative filename. The engine also always sets `masterFile` in the
+written sidecar to the bundle-relative filename of the master WAV it just
+wrote (overwriting any client-supplied value) — this is how a distribute
+plugin locates the audio, since the achieved filename embeds the
+render-time LUFS and isn't known ahead of the export. Missing artwork
+raises a normal `ExportError` (`422`).
+
 → `202 {"job_id": string}`.
 Job result:
 ```json
 {"out_path": string, "json_report_path": string, "txt_report_path": string,
  "checklist": {"no_clipping": bool, "peak_within_ceiling": bool,
    "loudness_within_tolerance": bool, "valid_stereo": bool,
-   "export_succeeded": bool, "output_is_wav": bool},
- "output_analysis": AnalysisReport}
+   "export_succeeded": bool, "output_is_wav": bool,
+   "accepted_streaming_specs": bool?},  // present only when profile="release"
+ "output_analysis": AnalysisReport,
+ "metadata_path": string|null}         // null unless `metadata` was given
+```
+
+## TrackMetadata shape (ADR 003 — frozen; mirrors `metadata.json` in the bundle)
+```json
+{"title": string, "artist": string, "isrc": string?,
+ "primaryGenre": string, "secondaryGenre": string?,
+ "explicit": bool, "artworkPath": string,   // absolute on input; bundle-relative once written
+ "recordLabel": string?, "releaseDate": string?,   // releaseDate is YYYY-MM-DD
+ "masterFile": string?}   // optional on request; engine always sets it on write to the
+                          // bundle-relative master wav filename (ignores any client value)
 ```
 
 ### `POST /batch` body:

@@ -7,10 +7,13 @@ import {
 } from "react";
 import type {
   AnalysisReport,
+  ExportProfile,
   MasterJobResult,
   Preset,
   PresetOverrides,
+  TrackMetadata,
 } from "@shared/types";
+import { EMPTY_TRACK_METADATA } from "../components/TrackMetadataForm";
 
 export interface AppState {
   currentPath: string | null;
@@ -29,10 +32,17 @@ export interface AppState {
   setMatchStrength: (strength: number) => void;
   masterResult: MasterJobResult | null;
   setMasterResult: (result: MasterJobResult | null) => void;
+  exportProfile: ExportProfile;
+  setExportProfile: (profile: ExportProfile) => void;
+  trackMetadata: TrackMetadata;
+  setTrackMetadata: (metadata: TrackMetadata) => void;
 }
 
 /** Contract's conservative default — reference-matching stage strength. */
 export const DEFAULT_MATCH_STRENGTH = 0.35;
+
+/** Export profile defaults to "dj" — release is an explicit opt-in (ADR 003). */
+export const DEFAULT_EXPORT_PROFILE: ExportProfile = "dj";
 
 const AppStateContext = createContext<AppState | null>(null);
 
@@ -49,6 +59,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [masterResult, setMasterResult] = useState<MasterJobResult | null>(
     null,
   );
+  const [exportProfile, setExportProfile] = useState<ExportProfile>(
+    DEFAULT_EXPORT_PROFILE,
+  );
+  const [trackMetadata, setTrackMetadata] =
+    useState<TrackMetadata>(EMPTY_TRACK_METADATA);
 
   const value = useMemo<AppState>(
     () => ({
@@ -68,6 +83,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       setMatchStrength,
       masterResult,
       setMasterResult,
+      exportProfile,
+      setExportProfile,
+      trackMetadata,
+      setTrackMetadata,
     }),
     [
       currentPath,
@@ -78,6 +97,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       referencePath,
       matchStrength,
       masterResult,
+      exportProfile,
+      trackMetadata,
     ],
   );
 

@@ -1,14 +1,35 @@
-import type { BitDepth, ExportJobResult } from "@shared/types";
+import type {
+  BitDepth,
+  ExportJobResult,
+  ExportProfile,
+  TrackMetadata,
+} from "@shared/types";
 import { JobProgress } from "./JobProgress";
 import { DjChecklist } from "./DjChecklist";
+import { TrackMetadataForm, isTrackMetadataValid } from "./TrackMetadataForm";
 
 const BIT_DEPTHS: BitDepth[] = [16, 24, 32];
+
+/**
+ * Distribute is gated on whether a metadata.json sidecar actually exists,
+ * NOT on the checklist shape -- `profile` and `metadata` are independent
+ * request fields (api-contract.md), so a release-profile export with no
+ * metadata would otherwise show Distribute against a bundle with nothing
+ * for a plugin to read.
+ */
+function hasDistributableBundle(result: ExportJobResult): boolean {
+  return result.metadata_path != null;
+}
 
 interface ExportBarProps {
   outDir: string | null;
   onPickOutDir: () => void;
   bitDepth: BitDepth;
   onBitDepthChange: (depth: BitDepth) => void;
+  profile: ExportProfile;
+  onProfileChange: (profile: ExportProfile) => void;
+  metadata: TrackMetadata;
+  onMetadataChange: (metadata: TrackMetadata) => void;
   onExport: () => void;
   isExporting: boolean;
   progress: number;
@@ -18,6 +39,10 @@ interface ExportBarProps {
   onReveal: (outPath: string) => void;
   onOpenJson: (path: string) => void;
   onOpenTxt: (path: string) => void;
+  /** Invokes the local distribute plugin (ADR 003) against the just-written bundle dir. */
+  onDistribute: () => void;
+  isDistributing: boolean;
+  distributeError: string | null;
 }
 
 /**
@@ -30,6 +55,10 @@ export function ExportBar({
   onPickOutDir,
   bitDepth,
   onBitDepthChange,
+  profile,
+  onProfileChange,
+  metadata,
+  onMetadataChange,
   onExport,
   isExporting,
   progress,
@@ -39,7 +68,13 @@ export function ExportBar({
   onReveal,
   onOpenJson,
   onOpenTxt,
+  onDistribute,
+  isDistributing,
+  distributeError,
 }: ExportBarProps) {
+  const releaseBlocked =
+    profile === "release" && !isTrackMetadataValid(metadata);
+
   return (
     <div className="border-t border-border bg-surface" data-testid="export-bar">
       {result && (
@@ -76,7 +111,23 @@ export function ExportBar({
             >
               TXT report
             </button>
+            {hasDistributableBundle(result) && (
+              <button
+                type="button"
+                data-testid="distribute-button"
+                onClick={onDistribute}
+                disabled={isDistributing}
+                className="text-brand underline disabled:opacity-50"
+              >
+                {isDistributing ? "Distributing…" : "Distribute…"}
+              </button>
+            )}
           </div>
+          {distributeError && (
+            <p className="text-xs text-error" data-testid="distribute-error">
+              {distributeError}
+            </p>
+          )}
         </div>
       )}
 
@@ -84,6 +135,41 @@ export function ExportBar({
         <p className="px-6 pt-3 text-sm text-error" data-testid="export-error">
           {error}
         </p>
+      )}
+
+      <div className="flex flex-wrap items-center gap-4 px-6 pt-4">
+        <fieldset
+          className="flex items-center gap-3 text-sm"
+          data-testid="export-profile-toggle"
+        >
+          <legend className="sr-only">Export profile</legend>
+          <label className="flex items-center gap-1">
+            <input
+              type="radio"
+              name="export-profile"
+              value="dj"
+              checked={profile === "dj"}
+              onChange={() => onProfileChange("dj")}
+            />
+            <span className="text-text-secondary">DJ</span>
+          </label>
+          <label className="flex items-center gap-1">
+            <input
+              type="radio"
+              name="export-profile"
+              value="release"
+              checked={profile === "release"}
+              onChange={() => onProfileChange("release")}
+            />
+            <span className="text-text-secondary">Release</span>
+          </label>
+        </fieldset>
+      </div>
+
+      {profile === "release" && (
+        <div className="px-6 pb-2 pt-2">
+          <TrackMetadataForm metadata={metadata} onChange={onMetadataChange} />
+        </div>
       )}
 
       <div className="flex flex-wrap items-center gap-4 px-6 py-4">
@@ -124,7 +210,7 @@ export function ExportBar({
         <button
           type="button"
           onClick={onExport}
-          disabled={!outDir || isExporting}
+          disabled={!outDir || isExporting || releaseBlocked}
           className="rounded-md bg-brand px-5 py-2.5 text-sm font-medium text-background hover:opacity-90 disabled:opacity-50"
         >
           Export {bitDepth}-bit WAV

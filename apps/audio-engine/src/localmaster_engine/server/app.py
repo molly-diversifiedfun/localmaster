@@ -102,12 +102,20 @@ class MasterBody(BaseModel):
     match_strength: float = 0.35
 
 
+VALID_EXPORT_PROFILES = {"dj", "release"}
+
+
 class ExportBody(MasterBody):
     out_dir: str
     bit_depth: int | None = None
     trim_silence: bool = False
     fade_in_ms: float = 0.0
     fade_out_ms: float = 0.0
+    # "release" selects the release checklist (accepted_streaming_specs) and,
+    # when `metadata` is given, writes the metadata.json sidecar + copies
+    # artwork into the bundle (ADR 003 / docs/plans/2026-07-05-release-export.md).
+    profile: str = "dj"
+    metadata: dict | None = None
 
 
 def _http_error(status: int, code: str, message: str) -> HTTPException:
@@ -125,6 +133,33 @@ def _resolve_preset(preset_id: str, overrides: dict | None):
         return preset.with_overrides(overrides or {})
     except (TypeError, ValueError) as exc:
         raise _http_error(422, "invalid_overrides", str(exc)) from exc
+
+
+def _validate_profile(profile: str) -> None:
+    """Cheap synchronous check, mirroring _resolve_preset/_validate_match_strength."""
+    if profile not in VALID_EXPORT_PROFILES:
+        raise _http_error(
+            422, "invalid_profile", f"profile must be one of {sorted(VALID_EXPORT_PROFILES)}, got {profile!r}"
+        )
+
+
+# TrackMetadata's required-for-distribution fields (packages/shared/types.ts,
+# TrackMetadataForm.tsx's isTrackMetadataValid — kept in lockstep with both).
+REQUIRED_METADATA_FIELDS = ("title", "artist", "primaryGenre", "artworkPath")
+
+
+def _validate_metadata(metadata: dict | None) -> None:
+    """Cheap synchronous check, mirroring _validate_profile. Applies whenever
+    `metadata` is given, independent of `profile` (api-contract.md) — a
+    half-populated sidecar would silently ship a broken bundle to a
+    distribute plugin."""
+    if metadata is None:
+        return
+    missing = [f for f in REQUIRED_METADATA_FIELDS if not metadata.get(f)]
+    if missing:
+        raise _http_error(
+            422, "invalid_metadata", f"metadata missing required field(s): {', '.join(missing)}"
+        )
 
 
 def _validate_match_strength(value: float) -> None:
@@ -226,6 +261,8 @@ async def master_endpoint(body: MasterBody) -> dict:
 async def export_endpoint(body: ExportBody) -> dict:
     resolved = _resolve_preset(body.preset_id, body.overrides)
     _validate_match_strength(body.match_strength)
+    _validate_profile(body.profile)
+    _validate_metadata(body.metadata)
 
     def work(progress) -> dict:
         started = time.monotonic()
@@ -237,6 +274,7 @@ async def export_endpoint(body: ExportBody) -> dict:
             bit_depth=body.bit_depth, processing_seconds=time.monotonic() - started,
             trim_silence=body.trim_silence,
             fade_in_ms=body.fade_in_ms, fade_out_ms=body.fade_out_ms,
+            profile=body.profile, metadata=body.metadata,
         )
         return {
             "out_path": export.out_path,
@@ -244,6 +282,7 @@ async def export_endpoint(body: ExportBody) -> dict:
             "txt_report_path": export.txt_report_path,
             "checklist": export.checklist,
             "output_analysis": export.output_analysis.to_dict(),
+            "metadata_path": export.metadata_path,
         }
 
     return {"job_id": store.submit(work)}
