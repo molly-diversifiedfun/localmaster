@@ -59,3 +59,26 @@ LocalMaster's export produces a **release bundle**, and "Distribute" is a
 - If LocalMaster ever becomes a multi-user product, "distribute" for other users
   is a *different* problem (aggregator API / distributor-of-record) — this plugin
   seam is explicitly a **single-operator, local** mechanism, not that.
+
+## Implementation notes (2026-07-05)
+
+- `run_distribute_plugin(bundle_dir)` is a Rust command
+  (`apps/desktop/src-tauri/src/distribute.rs`) registered directly via
+  `tauri::generate_handler!` in `lib.rs` — an app-level command, not a
+  plugin command. It required **no new capability entry** in
+  `capabilities/default.json`: Tauri's ACL only gates plugin-namespaced
+  permissions (`dialog:*`, `shell:*`, `core:*`); commands an app registers
+  itself on its own `invoke_handler` are callable by default, exactly like
+  every other command already in this crate (none currently declare
+  capability permissions).
+- No shell string is ever built: the configured command and the bundle dir
+  are passed as separate `std::process::Command` argv entries, so a
+  plugin id/command containing shell metacharacters cannot escalate into
+  shell injection.
+- `~/.localmaster/plugins.json` keys starting with `_` are treated as
+  comments/metadata and skipped — defends a user who pastes a documented
+  `"_comment"` field into their real config from having it executed as a
+  command.
+- `plugins.example.json` (repo root of `apps/desktop/`) is a template to
+  copy to `~/.localmaster/plugins.json`; it is never read from inside the
+  repo.

@@ -1,3 +1,4 @@
+mod distribute;
 mod engine;
 
 use std::sync::Mutex;
@@ -9,6 +10,7 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(engine::EngineHandle(Mutex::new(None)))
+        .invoke_handler(tauri::generate_handler![distribute::run_distribute_plugin])
         .setup(|app| {
             engine::spawn_engine(app.handle());
             Ok(())

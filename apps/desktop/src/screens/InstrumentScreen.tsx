@@ -15,7 +15,11 @@ import {
   exportAndWait,
   ApiError,
 } from "../lib/api";
-import { pickDirectory, openInDefaultApp } from "../lib/tauri";
+import {
+  pickDirectory,
+  openInDefaultApp,
+  runDistributePlugin,
+} from "../lib/tauri";
 import { loadRecentFiles, addRecentFile } from "../lib/recent-files";
 import { loadSettings } from "../lib/settings";
 import { dirname } from "../lib/format";
@@ -61,6 +65,10 @@ export function InstrumentScreen() {
     setMatchStrength,
     masterResult,
     setMasterResult,
+    exportProfile,
+    setExportProfile,
+    trackMetadata,
+    setTrackMetadata,
   } = useAppState();
 
   const [flow, dispatch] = useReducer(flowReducer, undefined, () => ({
@@ -80,6 +88,8 @@ export function InstrumentScreen() {
   const [bitDepth, setBitDepth] = useState<BitDepth>(
     () => loadSettings().defaultBitDepth,
   );
+  const [isDistributing, setIsDistributing] = useState(false);
+  const [distributeError, setDistributeError] = useState<string | null>(null);
 
   const ab = useAbPlayback(
     currentPath,
@@ -205,6 +215,7 @@ export function InstrumentScreen() {
   async function handleExport() {
     if (!currentPath || !selectedPresetId || !outDir) return;
     dispatch({ type: "START_EXPORT" });
+    setDistributeError(null);
     try {
       const result = await exportAndWait(
         {
@@ -214,6 +225,8 @@ export function InstrumentScreen() {
           ...referenceFields(),
           out_dir: outDir,
           bit_depth: bitDepth,
+          profile: exportProfile,
+          ...(exportProfile === "release" ? { metadata: trackMetadata } : {}),
         },
         {
           onProgress: (state) =>
@@ -231,6 +244,24 @@ export function InstrumentScreen() {
         type: "EXPORT_ERROR",
         message: err instanceof ApiError ? err.message : "Export failed.",
       });
+    }
+  }
+
+  /** Runs the local distribute plugin (ADR 003) against the release bundle
+   * dir just written by /export (out_dir). Falls back to opening
+   * DistroKid's new-release page when no plugin is configured. */
+  async function handleDistribute() {
+    if (!outDir) return;
+    setIsDistributing(true);
+    setDistributeError(null);
+    try {
+      await runDistributePlugin(outDir);
+    } catch (err) {
+      setDistributeError(
+        typeof err === "string" ? err : "Distribute plugin failed.",
+      );
+    } finally {
+      setIsDistributing(false);
     }
   }
 
@@ -272,6 +303,10 @@ export function InstrumentScreen() {
             }}
             bitDepth={bitDepth}
             onBitDepthChange={setBitDepth}
+            profile={exportProfile}
+            onProfileChange={setExportProfile}
+            metadata={trackMetadata}
+            onMetadataChange={setTrackMetadata}
             onExport={handleExport}
             isExporting={flow.stage === "exporting"}
             progress={flow.progress}
@@ -281,6 +316,9 @@ export function InstrumentScreen() {
             onReveal={(outPath) => openInDefaultApp(dirname(outPath))}
             onOpenJson={openInDefaultApp}
             onOpenTxt={openInDefaultApp}
+            onDistribute={handleDistribute}
+            isDistributing={isDistributing}
+            distributeError={distributeError}
           />
         )
       }
