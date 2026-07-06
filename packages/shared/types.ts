@@ -116,6 +116,27 @@ export interface MasterJobResult {
   ab_gain_db: number;
 }
 
+export type ExportProfile = "dj" | "release";
+
+/**
+ * Distribution-ready track metadata (ADR 003 — frozen contract, mirrored in
+ * `metadata.json` written into the release bundle; distribute plugins depend
+ * on this exact shape). `artworkPath` is an absolute path on input; the
+ * engine rewrites it to a bundle-relative filename when it writes the sidecar.
+ */
+export interface TrackMetadata {
+  title: string;
+  artist: string;
+  isrc?: string;
+  primaryGenre: string;
+  secondaryGenre?: string;
+  explicit: boolean;
+  artworkPath: string;
+  recordLabel?: string;
+  /** YYYY-MM-DD */
+  releaseDate?: string;
+}
+
 export interface ExportRequest {
   path: string;
   preset_id: string;
@@ -128,6 +149,11 @@ export interface ExportRequest {
   trim_silence?: boolean;
   fade_in_ms?: number;
   fade_out_ms?: number;
+  /** Defaults to "dj". "release" selects the release checklist below and,
+   * when `metadata` is also given, writes metadata.json + copies artwork
+   * into `out_dir` (the release bundle dir). */
+  profile?: ExportProfile;
+  metadata?: TrackMetadata;
 }
 
 export interface ExportChecklist {
@@ -139,12 +165,20 @@ export interface ExportChecklist {
   output_is_wav: boolean;
 }
 
+/** Only present when `profile: "release"` was requested. */
+export interface ReleaseChecklist extends ExportChecklist {
+  /** Sample rate in {44100, 48000} AND bit depth in {16, 24}. */
+  accepted_streaming_specs: boolean;
+}
+
 export interface ExportJobResult {
   out_path: string;
   json_report_path: string;
   txt_report_path: string;
-  checklist: ExportChecklist;
+  checklist: ExportChecklist | ReleaseChecklist;
   output_analysis: AnalysisReport;
+  /** Path to the written metadata.json sidecar, or null when no `metadata` was given. */
+  metadata_path?: string | null;
 }
 
 export interface BatchRequest {

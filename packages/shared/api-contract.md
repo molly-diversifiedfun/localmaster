@@ -65,18 +65,42 @@ Job result:
 {"path": string, "preset_id": string, "overrides": object?,
  "reference_path": string?, "match_strength": number = 0.35,
  "out_dir": string, "bit_depth": 16|24|32?,
- "trim_silence": bool = false, "fade_in_ms": number = 0, "fade_out_ms": number = 0}
+ "trim_silence": bool = false, "fade_in_ms": number = 0, "fade_out_ms": number = 0,
+ "profile": "dj"|"release" = "dj", "metadata": TrackMetadata?}
 ```
 Re-renders deterministically (bit-identical to the preview) and writes
-`{orig}__LocalMaster__{preset}__{LUFS}LUFS__{sr}Hz__{bits}bit.wav` + sidecars.
+`{orig}__LocalMaster__{preset}__{LUFS}LUFS__{sr}Hz__{bits}bit.wav` + sidecars
+into `out_dir`. `profile` is synchronously validated (`422 invalid_profile`
+if not `"dj"|"release"`), mirroring `preset_id`/`match_strength`.
+
+`profile: "release"` selects the release checklist (adds
+`accepted_streaming_specs`, see below) instead of the DJ checklist. When
+`metadata` (TrackMetadata, below) is ALSO given — independent of `profile` —
+the engine writes `out_dir/metadata.json` and, if `metadata.artworkPath` is
+set, copies that file into `out_dir` and rewrites `artworkPath` in the
+written sidecar to the bundle-relative filename. Missing artwork raises a
+normal `ExportError` (`422`). `out_dir` is the **release bundle dir** (ADR
+003) once it holds the master WAV + `metadata.json` + artwork + reports —
+that's the directory a distribute plugin is invoked against.
+
 → `202 {"job_id": string}`.
 Job result:
 ```json
 {"out_path": string, "json_report_path": string, "txt_report_path": string,
  "checklist": {"no_clipping": bool, "peak_within_ceiling": bool,
    "loudness_within_tolerance": bool, "valid_stereo": bool,
-   "export_succeeded": bool, "output_is_wav": bool},
- "output_analysis": AnalysisReport}
+   "export_succeeded": bool, "output_is_wav": bool,
+   "accepted_streaming_specs": bool?},  // present only when profile="release"
+ "output_analysis": AnalysisReport,
+ "metadata_path": string|null}         // null unless `metadata` was given
+```
+
+## TrackMetadata shape (ADR 003 — frozen; mirrors `metadata.json` in the bundle)
+```json
+{"title": string, "artist": string, "isrc": string?,
+ "primaryGenre": string, "secondaryGenre": string?,
+ "explicit": bool, "artworkPath": string,   // absolute on input; bundle-relative once written
+ "recordLabel": string?, "releaseDate": string?}   // releaseDate is YYYY-MM-DD
 ```
 
 ### `POST /batch` body:
