@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 
 import httpx
 import pytest
@@ -113,8 +114,32 @@ async def test_export_release_profile_with_metadata_writes_bundle(client, fixtur
         assert result["metadata_path"] is not None
         from pathlib import Path
 
-        assert Path(result["metadata_path"]).exists()
-        assert (out_dir / "cover.png").exists()
+        metadata_path = Path(result["metadata_path"])
+        assert metadata_path.exists()
+        # The bundle is its own subdir under out_dir (Issue: shared out_dir
+        # across tracks must never let a 2nd release export collide).
+        assert metadata_path.parent != out_dir
+        assert metadata_path.parent.parent == out_dir
+        assert (metadata_path.parent / "cover.png").exists()
+        written = json.loads(metadata_path.read_text())
+        assert written["masterFile"] == Path(result["out_path"]).name
+
+
+@pytest.mark.asyncio
+async def test_export_metadata_missing_required_fields_is_immediate_422(client, fixtures_dir, tmp_path):
+    async with client:
+        resp = await client.post(
+            "/export",
+            json={
+                "path": str(fixtures_dir / "sine_1khz_-20dBFS.wav"),
+                "preset_id": "gentle",
+                "out_dir": str(tmp_path / "out"),
+                "profile": "release",
+                "metadata": {"title": "Night Drive"},  # missing artist/primaryGenre/artworkPath
+            },
+        )
+        assert resp.status_code == 422
+        assert resp.json()["error"]["code"] == "invalid_metadata"
 
 
 @pytest.mark.asyncio

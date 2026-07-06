@@ -7,6 +7,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shutil
 import time
 from dataclasses import dataclass
@@ -95,6 +96,35 @@ def _claim_unique_path(path: Path) -> Path:
     raise ExportError(f"Could not find a free filename near {path.name}")
 
 
+_UNSAFE_BUNDLE_NAME_CHARS = re.compile(r'[\\/:*?"<>|]')
+
+
+def _sanitize_bundle_name(name: str) -> str:
+    """Filesystem-safe directory name — strips path separators and other
+    cross-platform-unsafe characters, collapses whitespace."""
+    cleaned = _UNSAFE_BUNDLE_NAME_CHARS.sub("_", name.strip())
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return cleaned or "release"
+
+
+def _claim_unique_dir(path: Path) -> Path:
+    """Directory analog of _claim_unique_path: never reuse an existing
+    release bundle dir (which would let a 2nd track's metadata.json/artwork
+    silently clobber the 1st's, since neither has any other collision
+    protection). On collision, appends __2, __3, …"""
+    candidates = (
+        path if n == 1 else path.with_name(f"{path.name}__{n}")
+        for n in range(1, 1000)
+    )
+    for candidate in candidates:
+        try:
+            candidate.mkdir(parents=True, exist_ok=False)
+            return candidate
+        except FileExistsError:
+            continue
+    raise ExportError(f"Could not find a free bundle directory near {path.name}")
+
+
 def _dither_seed(samples: np.ndarray, preset: Preset) -> int:
     digest = hashlib.sha256()
     digest.update(np.ascontiguousarray(samples).tobytes())
@@ -138,12 +168,20 @@ def _checklist(
     return checklist
 
 
-def _write_metadata_sidecar(out_root: Path, metadata: dict) -> Path:
+def _write_metadata_sidecar(out_root: Path, metadata: dict, master_file: str) -> Path:
     """Writes `metadata.json` (TrackMetadata, packages/shared/types.ts — a
-    frozen contract plugins depend on per ADR 003). If `artworkPath` is set,
-    copies that file into the bundle dir (skipping if already copied by a
-    prior attempt, staying non-destructive) and rewrites the field to the
-    bundle-relative filename so the bundle is self-contained."""
+    frozen contract plugins depend on per ADR 003). `masterFile` is always
+    set to the bundle-relative wav filename actually written (never taken
+    from the caller-supplied dict) so a distribute plugin can locate the
+    audio. If `artworkPath` is set, copies that file into the bundle dir and
+    rewrites the field to the bundle-relative filename so the bundle is
+    self-contained.
+
+    The `dest.exists()` skip-copy guard below is effectively unreachable for
+    a release-profile export (export_master claims a FRESH bundle
+    subdirectory per call, so `dest` can never already be present) — it's
+    kept as defense-in-depth for the non-subdirectoried dj-profile+metadata
+    case, where out_root is the shared out_dir."""
     sidecar = dict(metadata)
     artwork_path = sidecar.get("artworkPath")
     if artwork_path:
@@ -154,6 +192,7 @@ def _write_metadata_sidecar(out_root: Path, metadata: dict) -> Path:
         if not dest.exists():
             shutil.copy2(src, dest)
         sidecar["artworkPath"] = dest.name
+    sidecar["masterFile"] = master_file
     path = out_root / "metadata.json"
     path.write_text(json.dumps(sidecar, indent=2))
     return path
@@ -184,6 +223,21 @@ def export_master(
     except OSError as exc:
         raise ExportError(f"Cannot create output directory {out_root}: {exc}") from exc
 
+    # Release exports get a dedicated per-release subdirectory so a shared
+    # out_dir (e.g. the desktop's persisted default export dir) can never
+    # let a 2nd track's metadata.json/artwork collide with the 1st's —
+    # neither has any other collision protection (unlike the master WAV,
+    # which is claim-unique-named on its own). profile and metadata are
+    # independent (api-contract.md), so this applies even without metadata,
+    # falling back to the original file's stem for the bundle dir name.
+    bundle_root = out_root
+    if profile == "release":
+        if metadata and metadata.get("artist") and metadata.get("title"):
+            bundle_name = f"{metadata['artist']} - {metadata['title']}"
+        else:
+            bundle_name = Path(original_path).stem
+        bundle_root = _claim_unique_dir(out_root / _sanitize_bundle_name(bundle_name))
+
     final_samples = apply_trim_and_fades(
         result.samples, result.sample_rate,
         trim_silence=trim_silence, fade_in_ms=fade_in_ms, fade_out_ms=fade_out_ms,
@@ -198,7 +252,7 @@ def export_master(
     output_analysis = analyze(result.samples, result.sample_rate)
     achieved = output_analysis.integrated_lufs
     name = build_filename(Path(original_path).stem, preset.id, achieved, result.sample_rate, bits)
-    out_path = _claim_unique_path(out_root / name)
+    out_path = _claim_unique_path(bundle_root / name)
     try:
         _write_wav(out_path, result.samples, result.sample_rate, bits, preset)
     except Exception as exc:
@@ -229,7 +283,11 @@ def export_master(
     txt_path = out_path.with_suffix(".report.txt")
     json_path.write_text(json.dumps(report, indent=2))
     txt_path.write_text(reports.render_txt(report))
-    metadata_path = str(_write_metadata_sidecar(out_root, metadata)) if metadata is not None else None
+    metadata_path = (
+        str(_write_metadata_sidecar(bundle_root, metadata, out_path.name))
+        if metadata is not None
+        else None
+    )
     return ExportResult(
         out_path=str(out_path),
         json_report_path=str(json_path),

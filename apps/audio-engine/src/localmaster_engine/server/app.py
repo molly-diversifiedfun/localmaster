@@ -143,6 +143,25 @@ def _validate_profile(profile: str) -> None:
         )
 
 
+# TrackMetadata's required-for-distribution fields (packages/shared/types.ts,
+# TrackMetadataForm.tsx's isTrackMetadataValid — kept in lockstep with both).
+REQUIRED_METADATA_FIELDS = ("title", "artist", "primaryGenre", "artworkPath")
+
+
+def _validate_metadata(metadata: dict | None) -> None:
+    """Cheap synchronous check, mirroring _validate_profile. Applies whenever
+    `metadata` is given, independent of `profile` (api-contract.md) — a
+    half-populated sidecar would silently ship a broken bundle to a
+    distribute plugin."""
+    if metadata is None:
+        return
+    missing = [f for f in REQUIRED_METADATA_FIELDS if not metadata.get(f)]
+    if missing:
+        raise _http_error(
+            422, "invalid_metadata", f"metadata missing required field(s): {', '.join(missing)}"
+        )
+
+
 def _validate_match_strength(value: float) -> None:
     """Cheap range check — fails fast as a real 4xx, mirroring
     _resolve_preset. Reference PATH validity is a separate, more expensive
@@ -243,6 +262,7 @@ async def export_endpoint(body: ExportBody) -> dict:
     resolved = _resolve_preset(body.preset_id, body.overrides)
     _validate_match_strength(body.match_strength)
     _validate_profile(body.profile)
+    _validate_metadata(body.metadata)
 
     def work(progress) -> dict:
         started = time.monotonic()

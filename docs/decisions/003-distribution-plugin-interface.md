@@ -23,11 +23,19 @@ distributor's automation.
 LocalMaster's export produces a **release bundle**, and "Distribute" is a
 **generic plugin hook** — the public app knows nothing about DistroKid.
 
-1. **Release bundle** — a directory the streaming/release export writes:
-   - `master.wav` — the release master (−14 LUFS / −1.0 dBTP streaming variant)
+1. **Release bundle** — a dedicated per-release subdirectory (named
+   `"<artist> - <title>"`, sanitized, `__2`/`__3`/… on collision — never
+   `out_dir` itself, so one shared export destination can hold many
+   releases without their bundles colliding) containing:
+   - the release master WAV, named by the engine's normal export
+     convention (`{orig}__LocalMaster__{preset}__{LUFS}LUFS__{sr}Hz__{bits}bit.wav`
+     — **not** a literal `master.wav`, since the achieved LUFS/format are
+     only known after rendering)
    - `metadata.json` — `TrackMetadata` (title, artist, ISRC?, primary/secondary
-     genre, explicit flag, artwork path, label, release date) covering the
-     fields distributors ask for
+     genre, explicit flag, artwork path, label, release date, **masterFile**)
+     covering the fields distributors ask for. `masterFile` is the
+     bundle-relative filename of the wav above — how a plugin locates the
+     audio despite not knowing the achieved filename ahead of time.
    - the artwork file (pointed to by `metadata.json`)
    - the existing `.report.json` / `.report.txt`
 2. **Plugin hook** — "Distribute…" reads a **user-local, gitignored** config

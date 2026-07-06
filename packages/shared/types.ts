@@ -135,6 +135,14 @@ export interface TrackMetadata {
   recordLabel?: string;
   /** YYYY-MM-DD */
   releaseDate?: string;
+  /**
+   * Bundle-relative wav filename (e.g. the engine's `build_filename` output)
+   * -- how a distribute plugin locates the master audio. Optional on the
+   * /export request (the client doesn't know the achieved filename yet);
+   * the engine always sets/overwrites this to the actual written filename
+   * when it writes metadata.json, ignoring any client-supplied value.
+   */
+  masterFile?: string;
 }
 
 export interface ExportRequest {

@@ -165,6 +165,132 @@ def test_release_metadata_sidecar_written_and_artwork_copied(fixtures_dir, tmp_p
     copied = Path(export.metadata_path).parent / "cover.png"
     assert copied.exists()
     assert copied.read_bytes() == artwork.read_bytes()
+    # masterFile names the audio file the sidecar describes, bundle-relative
+    # (ADR 003 — a distribute plugin locates the master via this field).
+    assert written["masterFile"] == Path(export.out_path).name
+    assert (Path(export.metadata_path).parent / written["masterFile"]).exists()
+    # The release bundle is its own subdir under out_dir, not out_dir itself.
+    assert Path(export.metadata_path).parent != out_dir
+    assert Path(export.metadata_path).parent.parent == out_dir
+
+
+def test_release_bundle_dir_named_from_sanitized_artist_title(fixtures_dir, tmp_path):
+    src = fixtures_dir / "songlike_30s.wav"
+    loaded = load_audio(str(src))
+    input_analysis = analyze(loaded.samples, loaded.sample_rate, loaded.bit_depth)
+    preset = get_preset("streaming_balanced")
+    result = master(loaded.samples, loaded.sample_rate, preset)
+    artwork = tmp_path / "cover.png"
+    artwork.write_bytes(b"art")
+    metadata = {
+        "title": "Night / Drive?",
+        "artist": "Molly S",
+        "primaryGenre": "House",
+        "explicit": False,
+        "artworkPath": str(artwork),
+    }
+    export = export_master(
+        result, input_analysis, preset, str(src), str(tmp_path / "out"),
+        profile="release", metadata=metadata,
+    )
+    bundle_dir = Path(export.metadata_path).parent
+    # Path-unsafe characters from title/artist are sanitized out of the dir name.
+    assert bundle_dir.name == "Molly S - Night _ Drive_"
+    assert "/" not in bundle_dir.name
+
+
+def test_release_profile_without_metadata_still_gets_a_bundle_dir(fixtures_dir, tmp_path):
+    """profile and metadata are independent (api-contract.md) -- a release
+    export with no metadata still isolates its output in its own subdir,
+    named from the original file stem since no artist/title is available."""
+    src = fixtures_dir / "songlike_30s.wav"
+    loaded = load_audio(str(src))
+    input_analysis = analyze(loaded.samples, loaded.sample_rate, loaded.bit_depth)
+    preset = get_preset("streaming_balanced")
+    result = master(loaded.samples, loaded.sample_rate, preset)
+    out_dir = tmp_path / "out"
+    export = export_master(
+        result, input_analysis, preset, str(src), str(out_dir), profile="release",
+    )
+    assert Path(export.out_path).parent != out_dir
+    assert Path(export.out_path).parent.parent == out_dir
+    assert Path(export.out_path).parent.name == "songlike_30s"
+
+
+def test_release_profile_two_different_tracks_same_out_dir_dont_collide(fixtures_dir, tmp_path):
+    """Reviewer finding #1: a shared out_dir (e.g. the desktop's persisted
+    default export dir) must not let a 2nd release export clobber the 1st
+    track's metadata.json/artwork."""
+    src = fixtures_dir / "songlike_30s.wav"
+    loaded = load_audio(str(src))
+    input_analysis = analyze(loaded.samples, loaded.sample_rate, loaded.bit_depth)
+    preset = get_preset("streaming_balanced")
+    out_dir = tmp_path / "releases"
+
+    def export_track(title, artwork_bytes):
+        artwork = tmp_path / f"{title}.png"
+        artwork.write_bytes(artwork_bytes)
+        result = master(loaded.samples, loaded.sample_rate, preset)
+        metadata = {
+            "title": title, "artist": "Molly S", "primaryGenre": "House",
+            "explicit": False, "artworkPath": str(artwork),
+        }
+        return export_master(
+            result, input_analysis, preset, str(src), str(out_dir),
+            profile="release", metadata=metadata,
+        )
+
+    export1 = export_track("Night Drive", b"art-bytes-one")
+    export2 = export_track("Sunrise Set", b"art-bytes-two")
+
+    bundle1, bundle2 = Path(export1.metadata_path).parent, Path(export2.metadata_path).parent
+    assert bundle1 != bundle2
+
+    meta1 = json.loads(Path(export1.metadata_path).read_text())
+    meta2 = json.loads(Path(export2.metadata_path).read_text())
+    assert meta1["title"] == "Night Drive"
+    assert meta2["title"] == "Sunrise Set"
+
+    # Each bundle's own files -- master, sidecar, artwork -- all survive intact.
+    assert Path(export1.out_path).exists()
+    assert Path(export2.out_path).exists()
+    assert (bundle1 / meta1["artworkPath"]).read_bytes() == b"art-bytes-one"
+    assert (bundle2 / meta2["artworkPath"]).read_bytes() == b"art-bytes-two"
+
+
+def test_release_profile_same_bundle_name_claims_unique_dir(fixtures_dir, tmp_path):
+    """Two exports that resolve to the SAME sanitized '<artist> - <title>'
+    bundle name (e.g. a re-export) must not collide either."""
+    src = fixtures_dir / "songlike_30s.wav"
+    loaded = load_audio(str(src))
+    input_analysis = analyze(loaded.samples, loaded.sample_rate, loaded.bit_depth)
+    preset = get_preset("streaming_balanced")
+    out_dir = tmp_path / "releases"
+
+    def export_once(artwork_bytes):
+        artwork = tmp_path / f"art-{artwork_bytes!r}.png"
+        artwork.write_bytes(artwork_bytes)
+        result = master(loaded.samples, loaded.sample_rate, preset)
+        metadata = {
+            "title": "Night Drive", "artist": "Molly S", "primaryGenre": "House",
+            "explicit": False, "artworkPath": str(artwork),
+        }
+        return export_master(
+            result, input_analysis, preset, str(src), str(out_dir),
+            profile="release", metadata=metadata,
+        )
+
+    export1 = export_once(b"first")
+    export2 = export_once(b"second")
+
+    bundle1, bundle2 = Path(export1.metadata_path).parent, Path(export2.metadata_path).parent
+    assert bundle1 != bundle2
+    assert bundle1.name == "Molly S - Night Drive"
+    assert bundle2.name == "Molly S - Night Drive__2"
+    meta1 = json.loads(Path(export1.metadata_path).read_text())
+    meta2 = json.loads(Path(export2.metadata_path).read_text())
+    assert (bundle1 / meta1["artworkPath"]).read_bytes() == b"first"
+    assert (bundle2 / meta2["artworkPath"]).read_bytes() == b"second"
 
 
 def test_release_metadata_missing_artwork_file_raises_export_error(fixtures_dir, tmp_path):
