@@ -10,8 +10,15 @@ import { TrackMetadataForm, isTrackMetadataValid } from "./TrackMetadataForm";
 
 const BIT_DEPTHS: BitDepth[] = [16, 24, 32];
 
-function isReleaseResult(result: ExportJobResult): boolean {
-  return "accepted_streaming_specs" in result.checklist;
+/**
+ * Distribute is gated on whether a metadata.json sidecar actually exists,
+ * NOT on the checklist shape -- `profile` and `metadata` are independent
+ * request fields (api-contract.md), so a release-profile export with no
+ * metadata would otherwise show Distribute against a bundle with nothing
+ * for a plugin to read.
+ */
+function hasDistributableBundle(result: ExportJobResult): boolean {
+  return result.metadata_path != null;
 }
 
 interface ExportBarProps {
@@ -104,7 +111,7 @@ export function ExportBar({
             >
               TXT report
             </button>
-            {isReleaseResult(result) && (
+            {hasDistributableBundle(result) && (
               <button
                 type="button"
                 data-testid="distribute-button"

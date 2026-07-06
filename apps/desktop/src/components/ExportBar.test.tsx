@@ -96,7 +96,7 @@ describe("ExportBar — release profile", () => {
 });
 
 describe("ExportBar — Distribute", () => {
-  it("does not show Distribute after a DJ-profile export", () => {
+  it("does not show Distribute after a DJ-profile export with no metadata sidecar", () => {
     render(
       <ExportBar
         {...baseProps()}
@@ -106,6 +106,7 @@ describe("ExportBar — Distribute", () => {
           txt_report_path: "/out/track.report.txt",
           checklist: djChecklist,
           output_analysis: {} as never,
+          metadata_path: null,
         }}
       />,
     );
@@ -114,7 +115,41 @@ describe("ExportBar — Distribute", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("shows Distribute after a release-profile export and calls onDistribute when clicked", async () => {
+  it("does not show Distribute for a release checklist with no metadata sidecar (profile and metadata are independent)", () => {
+    render(
+      <ExportBar
+        {...baseProps()}
+        result={{
+          out_path: "/out/track.wav",
+          json_report_path: "/out/track.report.json",
+          txt_report_path: "/out/track.report.txt",
+          checklist: releaseChecklist,
+          output_analysis: {} as never,
+          metadata_path: null,
+        }}
+      />,
+    );
+    expect(screen.queryByTestId("distribute-button")).not.toBeInTheDocument();
+  });
+
+  it("shows Distribute whenever a metadata sidecar was written, even for a DJ checklist", () => {
+    render(
+      <ExportBar
+        {...baseProps()}
+        result={{
+          out_path: "/out/track.wav",
+          json_report_path: "/out/track.report.json",
+          txt_report_path: "/out/track.report.txt",
+          checklist: djChecklist,
+          output_analysis: {} as never,
+          metadata_path: "/out/bundle/metadata.json",
+        }}
+      />,
+    );
+    expect(screen.getByTestId("distribute-button")).toBeInTheDocument();
+  });
+
+  it("shows Distribute after a release export with a metadata sidecar and calls onDistribute when clicked", async () => {
     const onDistribute = vi.fn();
     render(
       <ExportBar
@@ -126,6 +161,7 @@ describe("ExportBar — Distribute", () => {
           txt_report_path: "/out/track.report.txt",
           checklist: releaseChecklist,
           output_analysis: {} as never,
+          metadata_path: "/out/bundle/metadata.json",
         }}
       />,
     );
@@ -146,6 +182,7 @@ describe("ExportBar — Distribute", () => {
           txt_report_path: "/out/track.report.txt",
           checklist: releaseChecklist,
           output_analysis: {} as never,
+          metadata_path: "/out/bundle/metadata.json",
         }}
       />,
     );
@@ -165,6 +202,7 @@ describe("ExportBar — Distribute", () => {
           txt_report_path: "/out/track.report.txt",
           checklist: releaseChecklist,
           output_analysis: {} as never,
+          metadata_path: "/out/bundle/metadata.json",
         }}
       />,
     );
