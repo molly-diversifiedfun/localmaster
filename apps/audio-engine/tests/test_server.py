@@ -84,6 +84,74 @@ async def test_export_job_with_overrides(client, fixtures_dir, tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_export_release_profile_with_metadata_writes_bundle(client, fixtures_dir, tmp_path):
+    artwork = tmp_path / "cover.png"
+    artwork.write_bytes(b"cover-bytes")
+    out_dir = tmp_path / "release_out"
+    async with client:
+        resp = await client.post(
+            "/export",
+            json={
+                "path": str(fixtures_dir / "songlike_30s.wav"),
+                "preset_id": "streaming_balanced",
+                "out_dir": str(out_dir),
+                "bit_depth": 24,
+                "profile": "release",
+                "metadata": {
+                    "title": "Night Drive",
+                    "artist": "Molly S",
+                    "primaryGenre": "House",
+                    "explicit": False,
+                    "artworkPath": str(artwork),
+                },
+            },
+        )
+        job = await _wait_for_job(client, resp.json()["job_id"])
+        assert job["status"] == "done", job["error"]
+        result = job["result"]
+        assert result["checklist"]["accepted_streaming_specs"] is True
+        assert result["metadata_path"] is not None
+        from pathlib import Path
+
+        assert Path(result["metadata_path"]).exists()
+        assert (out_dir / "cover.png").exists()
+
+
+@pytest.mark.asyncio
+async def test_export_invalid_profile_is_immediate_422(client, fixtures_dir, tmp_path):
+    async with client:
+        resp = await client.post(
+            "/export",
+            json={
+                "path": str(fixtures_dir / "sine_1khz_-20dBFS.wav"),
+                "preset_id": "gentle",
+                "out_dir": str(tmp_path / "out"),
+                "profile": "not_a_profile",
+            },
+        )
+        assert resp.status_code == 422
+        assert resp.json()["error"]["code"] == "invalid_profile"
+
+
+@pytest.mark.asyncio
+async def test_export_default_profile_is_dj(client, fixtures_dir, tmp_path):
+    """Omitting `profile` must not require metadata and keeps DJ checklist shape."""
+    async with client:
+        resp = await client.post(
+            "/export",
+            json={
+                "path": str(fixtures_dir / "sine_1khz_-20dBFS.wav"),
+                "preset_id": "gentle",
+                "out_dir": str(tmp_path / "out"),
+            },
+        )
+        job = await _wait_for_job(client, resp.json()["job_id"])
+        assert job["status"] == "done", job["error"]
+        assert "accepted_streaming_specs" not in job["result"]["checklist"]
+        assert job["result"]["metadata_path"] is None
+
+
+@pytest.mark.asyncio
 async def test_error_paths(client):
     async with client:
         resp = await client.post("/analyze", json={"path": "/nope/missing.wav"})

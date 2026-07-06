@@ -12,6 +12,10 @@ def _slim(analysis: AnalysisReport) -> dict:
     return data
 
 
+def _checklist_key(profile: str) -> str:
+    return "release_readiness_checklist" if profile == "release" else "dj_readiness_checklist"
+
+
 def build_report(
     *,
     original_path: str,
@@ -24,8 +28,9 @@ def build_report(
     warnings: list[str],
     checklist: dict[str, bool],
     processing_seconds: float,
+    profile: str = "dj",
 ) -> dict:
-    return {
+    report = {
         "tool": "LocalMaster (deterministic analysis-driven DSP — not AI mastering)",
         "original_file": original_path,
         "output_file": out_path,
@@ -35,9 +40,11 @@ def build_report(
         "output": _slim(output_analysis),
         "stages": stage_meta,
         "warnings": warnings,
-        "dj_readiness_checklist": checklist,
+        "profile": profile,
         "processing_seconds": round(processing_seconds, 2),
     }
+    report[_checklist_key(profile)] = checklist
+    return report
 
 
 def _fmt_check(ok: bool) -> str:
@@ -46,6 +53,9 @@ def _fmt_check(ok: bool) -> str:
 
 def render_txt(report: dict) -> str:
     inp, out, preset = report["input"], report["output"], report["preset"]
+    profile = report.get("profile", "dj")
+    checklist_key = _checklist_key(profile)
+    checklist_label = "Release readiness checklist:" if profile == "release" else "DJ readiness checklist:"
     lines = [
         "LocalMaster Report",
         "=" * 60,
@@ -63,9 +73,9 @@ def render_txt(report: dict) -> str:
         f"(transient guard budget {preset['gr_budget_db']} dB)",
         f"Export bit depth: {report['export_bit_depth']}-bit",
         "",
-        "DJ readiness checklist:",
+        checklist_label,
     ]
-    for key, ok in report["dj_readiness_checklist"].items():
+    for key, ok in report[checklist_key].items():
         lines.append(f"  [{_fmt_check(ok):4}] {key.replace('_', ' ')}")
     if report["warnings"]:
         lines.append("")

@@ -7,6 +7,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shutil
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -22,6 +23,11 @@ from localmaster_engine.presets import Preset
 
 VALID_BIT_DEPTHS = (16, 24, 32)
 
+# Release-profile checklist (ADR 003 / docs/plans/2026-07-05-release-export.md):
+# specs accepted by the major streaming platforms for a delivered master.
+ACCEPTED_STREAMING_SAMPLE_RATES = (44100, 48000)
+ACCEPTED_STREAMING_BIT_DEPTHS = (16, 24)
+
 
 class ExportError(Exception):
     """User-facing export failure."""
@@ -34,6 +40,7 @@ class ExportResult:
     txt_report_path: str
     output_analysis: AnalysisReport
     checklist: dict[str, bool]
+    metadata_path: str | None = None
 
 
 def apply_trim_and_fades(
@@ -108,9 +115,14 @@ def _write_wav(path: Path, samples: np.ndarray, sample_rate: int, bits: int, pre
 
 
 def _checklist(
-    output_analysis: AnalysisReport, preset: Preset, achieved_lufs: float, out_path: Path
+    output_analysis: AnalysisReport,
+    preset: Preset,
+    achieved_lufs: float,
+    out_path: Path,
+    bits: int,
+    profile: str = "dj",
 ) -> dict[str, bool]:
-    return {
+    checklist = {
         "no_clipping": not output_analysis.has_clipping,
         "peak_within_ceiling": output_analysis.true_peak_dbtp <= preset.ceiling_dbtp + 0.05,
         "loudness_within_tolerance": abs(achieved_lufs - preset.target_lufs) <= 1.0,
@@ -118,6 +130,33 @@ def _checklist(
         "export_succeeded": out_path.exists() and out_path.stat().st_size > 0,
         "output_is_wav": out_path.suffix.lower() == ".wav",
     }
+    if profile == "release":
+        checklist["accepted_streaming_specs"] = (
+            output_analysis.sample_rate in ACCEPTED_STREAMING_SAMPLE_RATES
+            and bits in ACCEPTED_STREAMING_BIT_DEPTHS
+        )
+    return checklist
+
+
+def _write_metadata_sidecar(out_root: Path, metadata: dict) -> Path:
+    """Writes `metadata.json` (TrackMetadata, packages/shared/types.ts — a
+    frozen contract plugins depend on per ADR 003). If `artworkPath` is set,
+    copies that file into the bundle dir (skipping if already copied by a
+    prior attempt, staying non-destructive) and rewrites the field to the
+    bundle-relative filename so the bundle is self-contained."""
+    sidecar = dict(metadata)
+    artwork_path = sidecar.get("artworkPath")
+    if artwork_path:
+        src = Path(artwork_path)
+        if not src.exists():
+            raise ExportError(f"Artwork file not found: {artwork_path}")
+        dest = out_root / src.name
+        if not dest.exists():
+            shutil.copy2(src, dest)
+        sidecar["artworkPath"] = dest.name
+    path = out_root / "metadata.json"
+    path.write_text(json.dumps(sidecar, indent=2))
+    return path
 
 
 def export_master(
@@ -132,6 +171,8 @@ def export_master(
     trim_silence: bool = False,
     fade_in_ms: float = 0.0,
     fade_out_ms: float = 0.0,
+    profile: str = "dj",
+    metadata: dict | None = None,
 ) -> ExportResult:
     started = time.monotonic()
     bits = bit_depth or preset.bit_depth
@@ -168,7 +209,7 @@ def export_master(
             raise ExportError(f"Failed writing {out_path.name}: {exc}") from exc
         raise
 
-    checklist = _checklist(output_analysis, preset, achieved, out_path)
+    checklist = _checklist(output_analysis, preset, achieved, out_path, bits, profile=profile)
     report = reports.build_report(
         original_path=original_path,
         out_path=str(out_path),
@@ -182,15 +223,18 @@ def export_master(
         processing_seconds=processing_seconds
         if processing_seconds is not None
         else time.monotonic() - started,
+        profile=profile,
     )
     json_path = out_path.with_suffix(".report.json")
     txt_path = out_path.with_suffix(".report.txt")
     json_path.write_text(json.dumps(report, indent=2))
     txt_path.write_text(reports.render_txt(report))
+    metadata_path = str(_write_metadata_sidecar(out_root, metadata)) if metadata is not None else None
     return ExportResult(
         out_path=str(out_path),
         json_report_path=str(json_path),
         txt_report_path=str(txt_path),
         output_analysis=output_analysis,
         checklist=checklist,
+        metadata_path=metadata_path,
     )
